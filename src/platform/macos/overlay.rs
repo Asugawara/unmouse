@@ -288,13 +288,4 @@ fn draw(scene: &Scene, config: &Config) {
             key.center.y - size.height / 2.0,
         ));
     }
-
-    if let Some(m) = scene.marker {
-        let r = 6.0;
-        let circle = NSRect::new(NSPoint::new(m.x - r, m.y - r), NSSize::new(r * 2.0, r * 2.0));
-        rgba(1.0, 0.1, 0.1, 0.9).setFill();
-        NSBezierPath::bezierPathWithOvalInRect(circle).fill();
-        rgba(1.0, 1.0, 1.0, 1.0).setStroke();
-        NSBezierPath::bezierPathWithOvalInRect(circle).stroke();
-    }
 }

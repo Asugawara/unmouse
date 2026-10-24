@@ -153,11 +153,19 @@ impl Controller {
         let Some(session) = self.session.as_mut() else {
             return Vec::new();
         };
-        if change(&mut session.nav) {
-            vec![Effect::Update(scenes(&session.nav, &self.config))]
-        } else {
-            Vec::new()
+        if !change(&mut session.nav) {
+            return Vec::new();
         }
+        let mut effects = vec![Effect::Update(scenes(&session.nav, &self.config))];
+        if session.nav.depth() >= session.nav.leaf_depth()
+            && let Some(to) = session.nav.target()
+        {
+            effects.push(Effect::MoveCursor {
+                to,
+                dragging: session.drag.is_some(),
+            });
+        }
+        effects
     }
 
     fn act(&mut self, action: Action) -> Vec<Effect> {
@@ -351,6 +359,70 @@ mod tests {
         let result = key(&mut c, L);
         assert!(result.consume);
         assert!(matches!(result.effects.as_slice(), [Effect::Update(_)]));
+    }
+
+    #[test]
+    fn completing_label_moves_cursor() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L]);
+        let result = key(&mut c, K);
+        assert!(matches!(result.effects.as_slice(), [Effect::Update(_)]));
+        let result = key(&mut c, SEMI);
+        assert!(matches!(
+            result.effects.as_slice(),
+            [
+                Effect::Update(_),
+                Effect::MoveCursor { to, dragging: false },
+            ] if *to == Point::new(855.0, 646.875)
+        ));
+    }
+
+    #[test]
+    fn refining_moves_cursor_each_key() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        let result = key(&mut c, SEMI);
+        assert!(matches!(
+            result.effects.as_slice(),
+            [
+                Effect::Update(_),
+                Effect::MoveCursor { to, dragging: false },
+            ] if *to == Point::new(888.75, 646.875)
+        ));
+    }
+
+    #[test]
+    fn back_to_undetermined_does_not_move() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        let result = key(&mut c, H);
+        assert!(matches!(result.effects.as_slice(), [Effect::Update(_)]));
+
+        let mut c = started();
+        type_keys(&mut c, &[L, L, K, SEMI, SEMI]);
+        let result = key(&mut c, H);
+        assert!(matches!(
+            result.effects.as_slice(),
+            [
+                Effect::Update(_),
+                Effect::MoveCursor { to, dragging: false },
+            ] if *to == Point::new(855.0, 646.875)
+        ));
+    }
+
+    #[test]
+    fn drag_target_moves_with_dragging() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L, K, SEMI, G]);
+        type_keys(&mut c, &[J, J, J]);
+        let result = key(&mut c, J);
+        assert!(matches!(
+            result.effects.as_slice(),
+            [
+                Effect::Update(_),
+                Effect::MoveCursor { to, dragging: true },
+            ] if *to == Point::new(45.0, 28.125)
+        ));
     }
 
     #[test]

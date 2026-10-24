@@ -47,7 +47,6 @@ pub struct Scene {
     pub faint_lines: Vec<Line>,
     /// 次の分割の境界（55% の線）。
     pub strong_lines: Vec<Line>,
-    pub marker: Option<Point>,
     pub label_size: f64,
     pub labels: Vec<Label>,
     pub edge_keys: Vec<EdgeKey>,
@@ -65,7 +64,6 @@ pub fn scenes(nav: &Nav, config: &Config) -> Vec<Scene> {
     let (cell_w, _) = nav.cell_size();
     let label_size = fit_label_size(style, cell_w, leaf);
     let determined = depth >= leaf;
-    let target = if determined { nav.target() } else { None };
     let edge = if determined {
         edge_keys(nav, current, style.edge_key_size)
     } else {
@@ -79,9 +77,6 @@ pub fn scenes(nav: &Nav, config: &Config) -> Vec<Scene> {
             dims: dims(frame, current),
             faint_lines: faint_lines(nav, frame),
             strong_lines: strong_lines(nav, frame, current),
-            marker: target
-                .filter(|t| frame.contains(*t))
-                .map(|t| local(t, frame)),
             label_size,
             labels: labels_for(&labels, monitor, frame, typed, corners, style.uppercase),
             edge_keys: edge
@@ -302,7 +297,6 @@ mod tests {
         assert_eq!(scene.faint_lines.len(), 30);
         let xs: Vec<f64> = scene.strong_lines.iter().map(|l| l.from.x).collect();
         assert_eq!(xs, vec![360.0, 720.0, 1080.0]);
-        assert_eq!(scene.marker, None);
     }
 
     #[test]
@@ -329,13 +323,12 @@ mod tests {
     }
 
     #[test]
-    fn determined_cell_shows_marker_and_edge_keys() {
+    fn determined_cell_shows_edge_keys() {
         let config = Config::default();
         let mut nav = nav_of(&[M]);
         type_str(&mut nav, "llk;");
         let scene = one(&nav, &config);
         assert!(scene.labels.is_empty());
-        assert!(point_approx(scene.marker.unwrap(), Point::new(855.0, 646.875)));
         assert_eq!(scene.edge_keys.len(), 8);
 
         let above: Vec<&EdgeKey> = scene.edge_keys.iter().filter(|k| k.next).collect();
