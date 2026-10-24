@@ -156,16 +156,28 @@ impl Controller {
         if !change(&mut session.nav) {
             return Vec::new();
         }
-        let mut effects = vec![Effect::Update(scenes(&session.nav, &self.config))];
-        if session.nav.depth() >= session.nav.leaf_depth()
-            && let Some(to) = session.nav.target()
-        {
-            effects.push(Effect::MoveCursor {
-                to,
-                dragging: session.drag.is_some(),
-            });
+        let decided = session.nav.depth() >= session.nav.leaf_depth();
+        let Some(to) = session.nav.target().filter(|_| decided) else {
+            return vec![Effect::Update(scenes(&session.nav, &self.config))];
+        };
+        let dragging = session.drag.is_some();
+        if self.config.grid.refine {
+            return vec![
+                Effect::Update(scenes(&session.nav, &self.config)),
+                Effect::MoveCursor { to, dragging },
+            ];
         }
-        effects
+        // refine = false: セルが決まった時点で閉じて待機に戻る。
+        self.session = None;
+        if dragging {
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor { to, dragging: true },
+                Effect::Mouse(MouseOp::Up(Button::Left), to),
+            ]
+        } else {
+            vec![Effect::Hide, Effect::MoveCursor { to, dragging: false }]
+        }
     }
 
     fn act(&mut self, action: Action) -> Vec<Effect> {
@@ -282,11 +294,26 @@ mod tests {
     const HOTKEY_KEY: u16 = 0x26;
 
     fn controller() -> Controller {
+        let mut config = Config {
+            hotkey: "ctrl+alt+j".to_string(),
+            ..Config::default()
+        };
+        config.grid.refine = true;
+        Controller::new(config).unwrap()
+    }
+
+    fn controller_no_refine() -> Controller {
         let config = Config {
             hotkey: "ctrl+alt+j".to_string(),
             ..Config::default()
         };
         Controller::new(config).unwrap()
+    }
+
+    fn started_no_refine() -> Controller {
+        let mut c = controller_no_refine();
+        hotkey(&mut c);
+        c
     }
 
     fn env() -> (Vec<Monitor>, Point) {
@@ -375,6 +402,79 @@ mod tests {
                 Effect::MoveCursor { to, dragging: false },
             ] if *to == Point::new(855.0, 646.875)
         ));
+    }
+
+    #[test]
+    fn completing_label_closes_and_moves() {
+        let mut c = started_no_refine();
+        type_keys(&mut c, &[L, L]);
+        let result = key(&mut c, K);
+        assert!(matches!(result.effects.as_slice(), [Effect::Update(_)]));
+        let result = key(&mut c, SEMI);
+        assert_eq!(
+            result.effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: Point::new(855.0, 646.875),
+                    dragging: false,
+                },
+            ]
+        );
+        assert!(!c.is_active());
+
+        let result = key(&mut c, SPACE);
+        assert!(!result.consume);
+        assert!(result.effects.is_empty());
+    }
+
+    #[test]
+    fn partial_input_actions_still_work() {
+        let mut c = started_no_refine();
+        type_keys(&mut c, &[L, L, K]);
+        assert_eq!(
+            key(&mut c, SPACE).effects,
+            vec![
+                Effect::Hide,
+                Effect::Mouse(
+                    MouseOp::Click {
+                        button: Button::Left,
+                        count: 1
+                    },
+                    Point::new(855.0, 562.5)
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn drag_without_refine_releases_on_completion() {
+        let mut c = started_no_refine();
+        type_keys(&mut c, &[L, L, K]);
+        let result = key(&mut c, G);
+        assert!(matches!(
+            result.effects.as_slice(),
+            [
+                Effect::MoveCursor { to, dragging: false },
+                Effect::Mouse(MouseOp::Down(Button::Left), down),
+                Effect::Update(_),
+            ] if *to == Point::new(855.0, 562.5) && *down == Point::new(855.0, 562.5)
+        ));
+        type_keys(&mut c, &[J, J, J]);
+        let result = key(&mut c, J);
+        let end = Point::new(45.0, 28.125);
+        assert_eq!(
+            result.effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: end,
+                    dragging: true
+                },
+                Effect::Mouse(MouseOp::Up(Button::Left), end),
+            ]
+        );
+        assert!(!c.is_active());
     }
 
     #[test]

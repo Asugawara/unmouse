@@ -5,6 +5,7 @@ double_tap_ms = 300           # 2回タップの間隔と、1回の押下の上�
 keys = ["j", "k", "l", ";"]
 max_cell = [180.0, 100.0]
 scope = "all_monitors"   # "cursor_monitor" で neru と同じくカーソルのモニターだけ
+refine = false           # true でセルが決まった後も表示を残し、続けて j k l ; で細かく絞れる（Space などで確定）
 
 [actions]
 left_click = "space"
@@ -22,7 +23,7 @@ dim_opacity = 0.30
 font = ""                # 空ならシステムの等幅（monospacedSystemFont）
 label_size = 11.0        # pt。6〜48
 min_label_size = 8.0     # セルに収まらないとき、ここまで縮める
-edge_key_size = 11.0     # 細分のキー
+edge_key_size = 11.0     # 細分のキーの文字サイズ（refine = true のとき）
 label_layout = "inline"  # "corners" で4隅に1文字ずつ（4文字のときだけ）
 label_bg_opacity = 0.72
 rest_opacity = 0.42

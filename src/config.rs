@@ -26,6 +26,8 @@ pub struct Grid {
     pub keys: Vec<String>,
     pub max_cell: [f64; 2],
     pub scope: Scope,
+    /// true なら、セルが決まった後も表示を残して細分できる。false なら決まった時点で閉じる。
+    pub refine: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -82,6 +84,7 @@ impl Default for Grid {
             keys: ["j", "k", "l", ";"].map(String::from).to_vec(),
             max_cell: [180.0, 100.0],
             scope: Scope::AllMonitors,
+            refine: false,
         }
     }
 }
@@ -243,6 +246,23 @@ mod tests {
     fn example_file_is_default() {
         let text = include_str!("../config.example.toml");
         assert_eq!(Config::from_toml(text).unwrap(), Config::default());
+    }
+
+    #[test]
+    fn refine_defaults_to_false() {
+        assert!(!Config::default().grid.refine);
+    }
+
+    #[test]
+    fn refine_can_be_enabled() {
+        let c = Config::from_toml("[grid]\nrefine = true").unwrap();
+        assert!(c.grid.refine);
+        let d = Config::default();
+        assert_eq!(c.grid.keys, d.grid.keys);
+        assert_eq!(c.grid.max_cell, d.grid.max_cell);
+        assert_eq!(c.grid.scope, d.grid.scope);
+        assert_eq!(c.hotkey, d.hotkey);
+        assert_eq!(c.actions, d.actions);
     }
 
     #[test]
