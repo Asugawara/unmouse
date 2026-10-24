@@ -63,7 +63,7 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 - `hotkey`: 起動の操作（既定 `"double:right_cmd"`）。トップレベルに書きます。修飾キーの2回タップは `"double:right_cmd"`（ほかに `left_cmd` `right_option` `left_option` `right_shift` `left_shift` `right_ctrl` `left_ctrl`）、キーの組み合わせは `"ctrl+alt+j"` の形で書きます。
 - `double_tap_ms`: 2回タップの間隔と、1回の押下の上限（ms、100〜1000、既定 300）。トップレベルに書きます。
 - `label_size`: ラベルの文字サイズ（pt、6〜48）。`[style]` に書きます。
-- `label_layout`: `"inline"`（既定）はセルの中に1まとまりで出します。`"corners"` は4隅に1文字ずつ出します（4文字のときだけ）。`[style]` に書きます。
+- `label_layout`: `"center"`（既定）はセルの真ん中に1まとまりで出します。`"inline"` はセルの左上に出します。`"corners"` は4隅に1文字ずつ出します（4文字のときだけ。それ以外は `"center"` と同じ）。`[style]` に書きます。
 - `max_cell`: 1つのセルの最大サイズ（pt、`[width, height]`）。大きいほどセルが粗くなります。`[grid]` に書きます。
 - `scope`: `"all_monitors"`（既定）は全モニターを1枚の画面として扱います。`"cursor_monitor"` はカーソルのあるモニターだけで分けます。`[grid]` に書きます。
 - `refine`: `false`（既定）は、ラベルを打ち終えると閉じます。`true` は閉じずに細分のキーを出し、続けて `j` `k` `l` `;` で細かく絞れます。その間は `Space` `d` `s` `a` で、その位置をキーでクリックできます。`[grid]` に書きます。

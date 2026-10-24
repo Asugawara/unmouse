@@ -265,6 +265,7 @@ fn draw(scene: &Scene, config: &Config) {
             Anchor::TopRight => (label.origin.x - w, label.origin.y),
             Anchor::BottomLeft => (label.origin.x, label.origin.y - h),
             Anchor::BottomRight => (label.origin.x - w, label.origin.y - h),
+            Anchor::Center => (label.origin.x - w / 2.0, label.origin.y - h / 2.0),
         };
         bg.setFill();
         NSBezierPath::fillRect(NSRect::new(NSPoint::new(x, y), NSSize::new(w, h)));

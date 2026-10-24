@@ -10,6 +10,7 @@ pub enum Anchor {
     TopRight,
     BottomLeft,
     BottomRight,
+    Center,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,7 +61,6 @@ pub fn scenes(nav: &Nav, config: &Config) -> Vec<Scene> {
     let current = nav.current();
     let typed = nav.typed();
     let labels = nav.labels();
-    let corners = style.label_layout == LabelLayout::Corners;
     let (cell_w, _) = nav.cell_size();
     let label_size = fit_label_size(style, cell_w, leaf);
     let determined = depth >= leaf;
@@ -78,7 +78,7 @@ pub fn scenes(nav: &Nav, config: &Config) -> Vec<Scene> {
             faint_lines: faint_lines(nav, frame),
             strong_lines: strong_lines(nav, frame, current),
             label_size,
-            labels: labels_for(&labels, monitor, frame, typed, corners, style.uppercase),
+            labels: labels_for(&labels, monitor, frame, typed, style.label_layout, style.uppercase),
             edge_keys: edge
                 .iter()
                 .filter(|(_, center, _)| frame.contains(*center))
@@ -130,7 +130,7 @@ fn labels_for(
     monitor: usize,
     frame: Rect,
     typed: &str,
-    corners: bool,
+    layout: LabelLayout,
     upper: bool,
 ) -> Vec<Label> {
     let n = typed.chars().count();
@@ -140,7 +140,7 @@ fn labels_for(
     }) {
         let piece = cell.piece;
         let chars: Vec<char> = cell.label.chars().collect();
-        if corners && chars.len() == 4 {
+        if layout == LabelLayout::Corners && chars.len() == 4 {
             for (index, &c) in chars.iter().enumerate().skip(n) {
                 let (anchor, at) = corner(piece, index);
                 out.push(Label {
@@ -152,11 +152,17 @@ fn labels_for(
                 });
             }
         } else {
+            // inline はセルの左上、それ以外（center と 4文字でない corners）は中央
+            let (at, anchor) = if layout == LabelLayout::Inline {
+                (Point::new(piece.x + 2.0, piece.y + 2.0), Anchor::TopLeft)
+            } else {
+                (piece.center(), Anchor::Center)
+            };
             out.push(Label {
                 strong: cased(chars[n], upper),
                 rest: chars[n + 1..].iter().map(|&c| cased(c, upper)).collect(),
-                origin: local(Point::new(piece.x + 2.0, piece.y + 2.0), frame),
-                anchor: Anchor::TopLeft,
+                origin: local(at, frame),
+                anchor,
                 next: true,
             });
         }
@@ -292,7 +298,8 @@ mod tests {
         let first = &scene.labels[0];
         assert_eq!(first.strong, 'j');
         assert_eq!(first.rest, "jjj");
-        assert!(point_approx(first.origin, Point::new(2.0, 2.0)));
+        assert!(point_approx(first.origin, Point::new(45.0, 28.125)));
+        assert_eq!(first.anchor, Anchor::Center);
         assert!(scene.dims.is_empty());
         assert_eq!(scene.faint_lines.len(), 30);
         let xs: Vec<f64> = scene.strong_lines.iter().map(|l| l.from.x).collect();
@@ -412,7 +419,18 @@ mod tests {
         assert!(all
             .iter()
             .flat_map(|s| &s.labels)
-            .all(|l| l.anchor == Anchor::TopLeft));
+            .all(|l| l.anchor == Anchor::Center));
+    }
+
+    #[test]
+    fn inline_layout_puts_label_at_top_left() {
+        let mut config = Config::default();
+        config.style.label_layout = LabelLayout::Inline;
+        let scene = one(&nav_of(&[M]), &config);
+        assert_eq!(scene.labels.len(), 256);
+        let first = &scene.labels[0];
+        assert!(point_approx(first.origin, Point::new(2.0, 2.0)));
+        assert_eq!(first.anchor, Anchor::TopLeft);
     }
 
     #[test]

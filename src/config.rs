@@ -47,6 +47,7 @@ pub struct Actions {
 #[serde(rename_all = "snake_case")]
 pub enum LabelLayout {
     #[default]
+    Center,
     Inline,
     Corners,
 }
@@ -113,7 +114,7 @@ impl Default for Style {
             label_size: 11.0,
             min_label_size: 8.0,
             edge_key_size: 11.0,
-            label_layout: LabelLayout::Inline,
+            label_layout: LabelLayout::Center,
             label_bg_opacity: 0.72,
             rest_opacity: 0.42,
             uppercase: false,
@@ -328,5 +329,14 @@ mod tests {
     #[test]
     fn unknown_fields_are_errors() {
         assert!(Config::from_toml("bogus = 1").is_err());
+    }
+
+    #[test]
+    fn label_layout_parses() {
+        let parse = |text: &str| Config::from_toml(text).unwrap().style.label_layout;
+        assert_eq!(parse("[style]\nlabel_layout = \"inline\""), LabelLayout::Inline);
+        assert_eq!(parse("[style]\nlabel_layout = \"center\""), LabelLayout::Center);
+        assert_eq!(parse("[style]\nlabel_layout = \"corners\""), LabelLayout::Corners);
+        assert_eq!(parse(""), LabelLayout::Center);
     }
 }

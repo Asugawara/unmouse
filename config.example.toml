@@ -24,7 +24,7 @@ font = ""                # 空ならシステムの等幅（monospacedSystemFont
 label_size = 11.0        # pt。6〜48
 min_label_size = 8.0     # セルに収まらないとき、ここまで縮める
 edge_key_size = 11.0     # 細分のキーの文字サイズ（refine = true のとき）
-label_layout = "inline"  # "corners" で4隅に1文字ずつ（4文字のときだけ）
+label_layout = "center"  # "inline" でセルの左上、"corners" で4隅に1文字ずつ（4文字のときだけ）
 label_bg_opacity = 0.72
 rest_opacity = 0.42
 uppercase = false
