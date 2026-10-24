@@ -103,12 +103,13 @@ impl Controller {
         }
     }
 
-    /// 起動の合図（修飾キーの2回タップなど）を受けた。待機中なら起動し、起動中なら取り消す。
+    /// 起動の合図（修飾キーの2回タップなど）を受けた。待機中なら起動する。起動中なら閉じ、
+    /// 打ちかけならその範囲の中心へ動かす（ドラッグ中は取り消す）。
     pub fn on_trigger(&mut self, env: impl FnOnce() -> (Vec<Monitor>, Point)) -> Vec<Effect> {
-        if self.is_active() {
-            self.cancel_external()
-        } else {
-            self.activate(env)
+        match &self.session {
+            None => self.activate(env),
+            Some(s) if s.drag.is_none() && s.nav.target().is_some() => self.act(Action::MoveOnly),
+            Some(_) => self.cancel_external(),
         }
     }
 
@@ -1006,6 +1007,61 @@ mod tests {
             ]
         );
         assert!(!c.is_active());
+    }
+
+    #[test]
+    fn trigger_with_partial_input_moves_to_the_range_center() {
+        let mut c = started();
+        key(&mut c, L);
+        assert_eq!(
+            hotkey(&mut c).effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: Point::new(900.0, 450.0),
+                    dragging: false,
+                },
+            ]
+        );
+        assert!(!c.is_active());
+    }
+
+    #[test]
+    fn trigger_with_four_char_partial_input_in_half() {
+        let mut c = half_started(false);
+        type_keys(&mut c, &[L, L, K]);
+        assert_eq!(
+            hotkey(&mut c).effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: Point::new(855.0, 562.5),
+                    dragging: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn esc_with_partial_input_only_hides() {
+        let mut c = started();
+        key(&mut c, L);
+        assert_eq!(key(&mut c, ESC).effects, vec![Effect::Hide]);
+    }
+
+    #[test]
+    fn trigger_while_dragging_with_new_input_still_cancels() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        key(&mut c, G);
+        type_keys(&mut c, &[J, J]);
+        assert_eq!(
+            hotkey(&mut c).effects,
+            vec![
+                Effect::Hide,
+                Effect::Mouse(MouseOp::Up(Button::Left), Point::new(855.0, 646.875)),
+            ]
+        );
     }
 
     #[test]
