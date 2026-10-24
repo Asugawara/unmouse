@@ -178,7 +178,7 @@ impl DoubleTapDetector {
         false
     }
 
-    /// 修飾キー以外が押された。途中の状態を捨てる。
+    /// 修飾キー以外のキーか、マウスの操作があった。途中の状態を捨てる。
     pub fn on_other_key(&mut self) {
         self.reset();
     }
@@ -224,6 +224,33 @@ mod tests {
         assert!(!tap(&mut d, RIGHT_CMD, 0, 50));
         d.on_other_key();
         assert!(!tap(&mut d, RIGHT_CMD, 100, 150));
+    }
+
+    #[test]
+    fn mouse_between_taps_cancels() {
+        // Karabiner は右 Cmd を外してマウス操作を送るため、その間は必ずマウスのイベントが来る。
+        let mut d = detector();
+        assert!(!d.on_modifier(RIGHT_CMD, true, 0));
+        assert!(!d.on_modifier(RIGHT_CMD, false, 100));
+        d.on_other_key();
+        assert!(!d.on_modifier(RIGHT_CMD, true, 250));
+        assert!(!d.on_modifier(RIGHT_CMD, false, 350));
+        d.on_other_key();
+        assert!(!d.on_modifier(RIGHT_CMD, true, 450));
+        assert!(!d.on_modifier(RIGHT_CMD, false, 520));
+        d.on_other_key();
+        assert!(!d.on_modifier(RIGHT_CMD, true, 600));
+        assert!(!d.on_modifier(RIGHT_CMD, false, 680));
+    }
+
+    #[test]
+    fn mouse_between_taps_would_fire_without_cancel() {
+        // 上のテストで on_other_key() を外すと発火することを示す（テストに意味があること）。
+        let mut d = detector();
+        assert!(!d.on_modifier(RIGHT_CMD, true, 0));
+        assert!(!d.on_modifier(RIGHT_CMD, false, 100));
+        assert!(!d.on_modifier(RIGHT_CMD, true, 250));
+        assert!(d.on_modifier(RIGHT_CMD, false, 350));
     }
 
     #[test]

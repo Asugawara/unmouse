@@ -58,6 +58,21 @@ pub fn mods_from_flags(flags: CGEventFlags) -> Mods {
     m
 }
 
+/// マウスの操作にあたるイベント。来たら2回タップの途中を捨てるが、飲み込まない。
+const MOUSE_KINDS: [CGEventType; 11] = [
+    CGEventType::MouseMoved,
+    CGEventType::LeftMouseDown,
+    CGEventType::LeftMouseUp,
+    CGEventType::RightMouseDown,
+    CGEventType::RightMouseUp,
+    CGEventType::OtherMouseDown,
+    CGEventType::OtherMouseUp,
+    CGEventType::LeftMouseDragged,
+    CGEventType::RightMouseDragged,
+    CGEventType::OtherMouseDragged,
+    CGEventType::ScrollWheel,
+];
+
 /// 起動からの経過時間（ms）。CGEvent の timestamp は Apple Silicon で
 /// mach_absolute_time の単位になり ns と一致しないため、受けた時刻をこちらで測る。
 fn now_ms() -> u64 {
@@ -94,14 +109,23 @@ unsafe extern "C-unwind" fn callback(
         }
         return ev;
     }
+    if MOUSE_KINDS.contains(&kind) {
+        // マウスを動かした・押した・スクロールした。飲み込まない。
+        // ログにも出さない（多すぎるため）。
+        if let Some(dt) = state.double_tap.as_mut() {
+            dt.detector.on_other_key();
+        }
+        return ev;
+    }
     let event_ref = unsafe { event.as_ref() };
     let code = CGEvent::integer_value_field(Some(event_ref), CGEventField::KeyboardEventKeycode) as u16;
     if kind == CGEventType::FlagsChanged {
         // 飲み込まない（Cmd を使うショートカットを壊さないため）。
         let flags = CGEvent::flags(Some(event_ref)).0;
-        let fired = state.flags_changed(code, flags, now_ms());
+        let t = now_ms();
+        let fired = state.flags_changed(code, flags, t);
         if state.verbose {
-            eprintln!("flagsChanged code=0x{code:02x} flags=0x{flags:x} fired={fired}");
+            eprintln!("t={t} flagsChanged code=0x{code:02x} flags=0x{flags:x} fired={fired}");
         }
         return ev;
     }
@@ -123,7 +147,8 @@ unsafe extern "C-unwind" fn callback(
         }
         if state.verbose {
             eprintln!(
-                "keyDown code=0x{code:02x} flags=0x{:x} fired={consumed}",
+                "t={} keyDown code=0x{code:02x} flags=0x{:x} fired={consumed}",
+                now_ms(),
                 CGEvent::flags(Some(event_ref)).0
             );
         }
@@ -148,7 +173,8 @@ impl Tap {
     pub fn new(handler: Handler, double_tap: Option<DoubleTap>, verbose: bool) -> Option<Self> {
         let mask: u64 = (1 << CGEventType::KeyDown.0)
             | (1 << CGEventType::KeyUp.0)
-            | (1 << CGEventType::FlagsChanged.0);
+            | (1 << CGEventType::FlagsChanged.0)
+            | MOUSE_KINDS.iter().fold(0u64, |m, k| m | (1u64 << k.0));
         let mut state = Box::new(State {
             handler,
             double_tap,

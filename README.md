@@ -61,7 +61,7 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 全項目は `config.example.toml` を参照してください。よく変える項目は次のとおりです。
 
 - `hotkey`: 起動の操作（既定 `"double:right_cmd"`）。トップレベルに書きます。修飾キーの2回タップは `"double:right_cmd"`（ほかに `left_cmd` `right_option` `left_option` `right_shift` `left_shift` `right_ctrl` `left_ctrl`）、キーの組み合わせは `"ctrl+alt+j"` の形で書きます。
-- `double_tap_ms`: 2回タップの間隔と、1回の押下の上限（ms、100〜1000、既定 300）。トップレベルに書きます。
+- `double_tap_ms`: 2回タップの間隔と、1回の押下の上限（ms、100〜1000、既定 300）。トップレベルに書きます。2回のタップの間にキーを押すか、マウスを動かす・クリックする・スクロールすると、数え直します（Karabiner などで右 Cmd を押したままマウスを操作しても起動しません）。
 - `label_size`: ラベルの文字サイズ（pt、6〜48）。`[style]` に書きます。
 - `label_layout`: `"center"`（既定）はセルの真ん中に1まとまりで出します。`"inline"` はセルの左上に出します。`"corners"` は4隅に1文字ずつ出します（4文字のときだけ。それ以外は `"center"` と同じ）。`[style]` に書きます。
 - `key_colors`: 次に打つ文字の色（`"#rrggbb"` を4つ、`grid.keys` と同じ順）。既定は `j` 青、`k` 緑、`l` 橙、`;` 紫です。次に打つ文字は太字で、キーごとの色になります。`[style]` に書きます。
