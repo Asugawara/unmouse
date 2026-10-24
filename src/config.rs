@@ -88,7 +88,7 @@ impl Default for Grid {
         Self {
             keys: ["j", "k", "l", ";"].map(String::from).to_vec(),
             max_cell: [180.0, 100.0],
-            extra_chars: 1,
+            extra_chars: 0,
             scope: Scope::AllMonitors,
             refine: false,
         }
@@ -114,7 +114,7 @@ impl Default for Style {
     fn default() -> Self {
         Self {
             accent: "#1d4ed8".to_string(),
-            key_colors: ["#1d4ed8", "#15803d", "#c2410c", "#7e22ce"].map(String::from).to_vec(),
+            key_colors: ["#0050ff", "#009900", "#ff0000", "#cc00cc"].map(String::from).to_vec(),
             dim_opacity: 0.30,
             font: String::new(),
             label_size: 11.0,
@@ -350,9 +350,9 @@ mod tests {
     #[test]
     fn key_colors_default_and_lookup() {
         let c = Config::default();
-        assert_eq!(c.key_rgb('j'), Some((29, 78, 216)));
-        assert_eq!(c.key_rgb(';'), Some((126, 34, 206)));
-        assert_eq!(c.key_rgb('L'), Some((194, 65, 12)));
+        assert_eq!(c.key_rgb('j'), Some((0, 80, 255)));
+        assert_eq!(c.key_rgb(';'), Some((204, 0, 204)));
+        assert_eq!(c.key_rgb('L'), Some((255, 0, 0)));
         assert_eq!(c.key_rgb('L'), c.key_rgb('l'));
         assert_eq!(c.key_rgb('x'), None);
     }
@@ -374,9 +374,9 @@ mod tests {
 
     #[test]
     fn extra_chars_default_and_zero() {
-        assert_eq!(Config::default().grid.extra_chars, 1);
-        let c = Config::from_toml("[grid]\nextra_chars = 0").unwrap();
-        assert_eq!(c.grid.extra_chars, 0);
+        assert_eq!(Config::default().grid.extra_chars, 0);
+        let c = Config::from_toml("[grid]\nextra_chars = 1").unwrap();
+        assert_eq!(c.grid.extra_chars, 1);
     }
 
     #[test]
