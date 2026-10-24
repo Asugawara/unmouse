@@ -478,7 +478,8 @@ mod tests {
     #[test]
     fn controller_uses_same_scene() {
         // 起動直後の表示が Controller の Show と同じ内容になること
-        let config = Config::default();
+        let mut config = Config::default();
+        config.grid.extra_chars = 0;
         let mut controller = Controller::new(config.clone()).unwrap();
         let effects = controller.activate(|| (vec![mon(M)], Point::new(0.0, 0.0)));
         assert_eq!(effects, vec![Effect::Show(scenes(&nav_of(&[M]), &config))]);

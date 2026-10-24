@@ -25,6 +25,8 @@ pub struct Config {
 pub struct Grid {
     pub keys: Vec<String>,
     pub max_cell: [f64; 2],
+    /// `max_cell` で決まった文字数に足す文字数（0〜2）。1 増やすとセルは 1/4 の大きさ。
+    pub extra_chars: usize,
     pub scope: Scope,
     /// true なら、セルが決まった後も表示を残して細分できる。false なら決まった時点で閉じる。
     pub refine: bool,
@@ -86,6 +88,7 @@ impl Default for Grid {
         Self {
             keys: ["j", "k", "l", ";"].map(String::from).to_vec(),
             max_cell: [180.0, 100.0],
+            extra_chars: 1,
             scope: Scope::AllMonitors,
             refine: false,
         }
@@ -219,6 +222,11 @@ impl Config {
         ensure!(
             self.grid.max_cell.iter().all(|&v| v > 0.0),
             "grid.max_cell は正の値にしてください"
+        );
+        ensure!(
+            self.grid.extra_chars <= 2,
+            "grid.extra_chars は 0 以上 2 以下にしてください（指定: {}）",
+            self.grid.extra_chars
         );
         Ok(())
     }
@@ -362,6 +370,18 @@ mod tests {
         // min_label_size（既定 8）が label_size（7）より大きい
         assert!(Config::from_toml("[style]\nlabel_size = 7").is_err());
         assert!(Config::from_toml("[style]\nlabel_size = 9").is_ok());
+    }
+
+    #[test]
+    fn extra_chars_default_and_zero() {
+        assert_eq!(Config::default().grid.extra_chars, 1);
+        let c = Config::from_toml("[grid]\nextra_chars = 0").unwrap();
+        assert_eq!(c.grid.extra_chars, 0);
+    }
+
+    #[test]
+    fn extra_chars_over_two_is_error() {
+        assert!(Config::from_toml("[grid]\nextra_chars = 3").is_err());
     }
 
     #[test]

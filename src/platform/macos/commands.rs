@@ -19,7 +19,9 @@ fn main_thread() -> Result<MainThreadMarker> {
 }
 
 fn nav_for(config: &Config, monitors: &[Monitor], cursor: Point) -> Result<Nav> {
-    Ok(Nav::new(monitors, config.grid.scope, cursor, config.max_cell()).with_keys(config.key_chars()?))
+    Ok(Nav::new(monitors, config.grid.scope, cursor, config.max_cell())
+        .with_keys(config.key_chars()?)
+        .with_extra_chars(config.grid.extra_chars))
 }
 
 pub fn run(verbose: bool) -> Result<()> {

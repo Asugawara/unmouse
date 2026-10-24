@@ -80,7 +80,8 @@ impl Controller {
             cursor,
             self.config.max_cell(),
         )
-        .with_keys(self.chars);
+        .with_keys(self.chars)
+        .with_extra_chars(self.config.grid.extra_chars);
         let effects = vec![Effect::Show(scenes(&nav, &self.config))];
         self.session = Some(Session {
             start: nav.clone(),
@@ -299,14 +300,16 @@ mod tests {
             ..Config::default()
         };
         config.grid.refine = true;
+        config.grid.extra_chars = 0;
         Controller::new(config).unwrap()
     }
 
     fn controller_no_refine() -> Controller {
-        let config = Config {
+        let mut config = Config {
             hotkey: "ctrl+alt+j".to_string(),
             ..Config::default()
         };
+        config.grid.extra_chars = 0;
         Controller::new(config).unwrap()
     }
 

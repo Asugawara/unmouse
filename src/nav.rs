@@ -50,6 +50,14 @@ impl Nav {
         self
     }
 
+    /// `plan_axes` で決まった向きの後ろに、`n` 個の向きを足す（細かくする）。
+    pub fn with_extra_chars(mut self, n: usize) -> Self {
+        for _ in 0..n {
+            self.axes.push(self.axis_at(self.axes.len()));
+        }
+        self
+    }
+
     pub fn canvas(&self) -> Rect {
         self.canvas
     }
@@ -270,6 +278,37 @@ mod tests {
             nav_of(&[mon(MB), mon(EXT_R), mon(C3)]).axes(),
             vec![C, R, C, R, C]
         );
+    }
+
+    #[test]
+    fn extra_chars_adds_one_axis() {
+        use Axis::{Cols as C, Rows as R};
+        let nav = nav_of(&[mon(M)]).with_extra_chars(1);
+        assert_eq!(nav.axes(), vec![C, R, C, R, C]);
+        let labels = nav.labels();
+        assert_eq!(labels.len(), 1024);
+        assert!(labels.iter().all(|l| l.label.chars().count() == 5));
+        assert!(rect_approx(
+            find(&labels, "jjjjj").cell,
+            Rect::new(0.0, 0.0, 22.5, 56.25)
+        ));
+    }
+
+    #[test]
+    fn extra_chars_across_monitors_is_six() {
+        use Axis::{Cols as C, Rows as R};
+        let nav = nav_of(&[mon(MB), mon(EXT_R)]).with_extra_chars(1);
+        assert_eq!(nav.axes(), vec![C, R, C, R, C, R]);
+        let labels = nav.labels();
+        assert!(labels.iter().all(|l| l.label.chars().count() == 6));
+        // 2台の外接矩形は 4072×1440（既存テストの 63.625×90 から逆算）。64列×64行
+        assert!(labels.iter().all(|l| approx(l.cell.w, 63.625) && approx(l.cell.h, 22.5)));
+    }
+
+    #[test]
+    fn extra_chars_zero_keeps_axes() {
+        let base = nav_of(&[mon(MB), mon(EXT_R)]).axes();
+        assert_eq!(nav_of(&[mon(MB), mon(EXT_R)]).with_extra_chars(0).axes(), base);
     }
 
     #[test]
