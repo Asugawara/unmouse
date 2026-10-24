@@ -1,0 +1,33 @@
+hotkey = "double:right_cmd"   # 修飾キーの2回タップ。"ctrl+alt+j" のようなキーの組み合わせも可
+double_tap_ms = 300           # 2回タップの間隔と、1回の押下の上限（ms）。100〜1000
+
+[grid]
+keys = ["j", "k", "l", ";"]
+max_cell = [180.0, 100.0]
+subdivide = "half"        # "off" で 2台 512 セル（5文字）、"half" で 1024 セル（5文字と6文字）、"quarter" で 2048 セル（6文字）
+scope = "all_monitors"   # "cursor_monitor" で neru と同じくカーソルのモニターだけ
+refine = false           # true でセルが決まった後も表示を残し、続けて j k l ; で細かく絞れる（Space などで確定）
+
+[actions]
+left_click = "space"
+right_click = "d"
+double_click = "s"
+middle_click = "a"
+move_only = "f"
+drag = "g"
+back = ["h", "backspace"]
+cancel = "escape"
+
+[style]
+accent = "#1d4ed8"
+key_colors = ["#0050ff", "#009900", "#ff0000", "#cc00cc"]  # 次に打つ文字の色（keys と同じ順）
+next_scale = 1.5        # 次に打つ文字（色が付いている文字）の大きさの倍率（1.0〜3.0）
+dim_opacity = 0.30
+font = ""                # 空ならシステムの等幅（monospacedSystemFont）
+label_size = 11.0        # pt。6〜48
+min_label_size = 8.0     # セルに収まらないとき、ここまで縮める
+edge_key_size = 11.0     # 細分のキーの文字サイズ（refine = true のとき）
+label_layout = "center"  # "inline" でセルの左上、"corners" で4隅に1文字ずつ（4文字のときだけ）
+label_bg_opacity = 0.72
+rest_opacity = 0.42
+uppercase = false
