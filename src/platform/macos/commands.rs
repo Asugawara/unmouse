@@ -21,7 +21,7 @@ fn main_thread() -> Result<MainThreadMarker> {
 fn nav_for(config: &Config, monitors: &[Monitor], cursor: Point) -> Result<Nav> {
     Ok(Nav::new(monitors, config.grid.scope, cursor, config.max_cell())
         .with_keys(config.key_chars()?)
-        .with_extra_chars(config.grid.extra_chars))
+        .with_subdivide(config.grid.subdivide))
 }
 
 pub fn run(verbose: bool) -> Result<()> {
@@ -72,7 +72,12 @@ pub fn layout() -> Result<()> {
     let (cw, ch) = nav.cell_size();
     println!("scope: {:?}", config.grid.scope);
     println!("canvas: {:?}", nav.canvas());
-    println!("label chars: {}", nav.leaf_depth());
+    let (min_len, max_len) = nav.label_len_range();
+    if min_len == max_len {
+        println!("label chars: {min_len}");
+    } else {
+        println!("label chars: {min_len}-{max_len}");
+    }
     println!("axes: {:?}", nav.axes());
     println!("cell: {cw:.1}x{ch:.1}pt");
     let labels = nav.labels();

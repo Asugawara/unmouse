@@ -25,11 +25,22 @@ pub struct Config {
 pub struct Grid {
     pub keys: Vec<String>,
     pub max_cell: [f64; 2],
-    /// `max_cell` で決まった文字数に足す文字数（0〜2）。1 増やすとセルは 1/4 の大きさ。
-    pub extra_chars: usize,
+    /// セルの分け方。
+    pub subdivide: Subdivide,
     pub scope: Scope,
     /// true なら、セルが決まった後も表示を残して細分できる。false なら決まった時点で閉じる。
     pub refine: bool,
+}
+
+/// セルの分け方。`Off` は一様（2台で 512 セル）、`Half` は最後の段だけ半分（1024 セル、5文字と6文字）、
+/// `Quarter` は4等分の段を1つ足す（2048 セル、6文字）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Subdivide {
+    Off,
+    #[default]
+    Half,
+    Quarter,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -88,7 +99,7 @@ impl Default for Grid {
         Self {
             keys: ["j", "k", "l", ";"].map(String::from).to_vec(),
             max_cell: [180.0, 100.0],
-            extra_chars: 0,
+            subdivide: Subdivide::default(),
             scope: Scope::AllMonitors,
             refine: false,
         }
@@ -222,11 +233,6 @@ impl Config {
         ensure!(
             self.grid.max_cell.iter().all(|&v| v > 0.0),
             "grid.max_cell は正の値にしてください"
-        );
-        ensure!(
-            self.grid.extra_chars <= 2,
-            "grid.extra_chars は 0 以上 2 以下にしてください（指定: {}）",
-            self.grid.extra_chars
         );
         Ok(())
     }
@@ -373,15 +379,21 @@ mod tests {
     }
 
     #[test]
-    fn extra_chars_default_and_zero() {
-        assert_eq!(Config::default().grid.extra_chars, 0);
-        let c = Config::from_toml("[grid]\nextra_chars = 1").unwrap();
-        assert_eq!(c.grid.extra_chars, 1);
+    fn subdivide_default_is_half() {
+        assert_eq!(Config::default().grid.subdivide, Subdivide::Half);
     }
 
     #[test]
-    fn extra_chars_over_two_is_error() {
-        assert!(Config::from_toml("[grid]\nextra_chars = 3").is_err());
+    fn subdivide_parses() {
+        let parse = |text: &str| Config::from_toml(text).unwrap().grid.subdivide;
+        assert_eq!(parse("[grid]\nsubdivide = \"off\""), Subdivide::Off);
+        assert_eq!(parse("[grid]\nsubdivide = \"half\""), Subdivide::Half);
+        assert_eq!(parse("[grid]\nsubdivide = \"quarter\""), Subdivide::Quarter);
+    }
+
+    #[test]
+    fn subdivide_unknown_value_is_error() {
+        assert!(Config::from_toml("[grid]\nsubdivide = \"foo\"").is_err());
     }
 
     #[test]

@@ -4,7 +4,7 @@ double_tap_ms = 300           # 2回タップの間隔と、1回の押下の上�
 [grid]
 keys = ["j", "k", "l", ";"]
 max_cell = [180.0, 100.0]
-extra_chars = 0          # max_cell で決まる文字数に足す文字数。1 増やすとセルは 1/4 の大きさ（0 で 2台 512 セル、1 で 2048 セル）
+subdivide = "half"        # "off" で 2台 512 セル（5文字）、"half" で 1024 セル（5文字と6文字）、"quarter" で 2048 セル（6文字）
 scope = "all_monitors"   # "cursor_monitor" で neru と同じくカーソルのモニターだけ
 refine = false           # true でセルが決まった後も表示を残し、続けて j k l ; で細かく絞れる（Space などで確定）
 

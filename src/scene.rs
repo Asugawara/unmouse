@@ -56,15 +56,12 @@ pub struct Scene {
 /// モニターごとに1つずつ作る。
 pub fn scenes(nav: &Nav, config: &Config) -> Vec<Scene> {
     let style = &config.style;
-    let depth = nav.depth();
-    let leaf = nav.leaf_depth();
     let current = nav.current();
     let typed = nav.typed();
     let labels = nav.labels();
     let (cell_w, _) = nav.cell_size();
-    let label_size = fit_label_size(style, cell_w, leaf);
-    let determined = depth >= leaf;
-    let edge = if determined {
+    let label_size = fit_label_size(style, cell_w, nav.label_len_range().1);
+    let edge = if nav.is_determined() {
         edge_keys(nav, current, style.edge_key_size)
     } else {
         Vec::new()
@@ -215,46 +212,70 @@ fn faint_lines(nav: &Nav, frame: Rect) -> Vec<Line> {
     lines
 }
 
-/// 次に分ける境界（範囲の内側）を、モニターの中で切って返す。
+/// 次に分ける境界（範囲の内側）を、モニターの中で切って返す。同じ直線上でつながる線分は1本にまとめる。
 fn strong_lines(nav: &Nav, frame: Rect, current: Rect) -> Vec<Line> {
-    let axis = nav.axis_at(nav.depth());
+    const EPS: f64 = 1e-6;
+    // (座標, 始点, 終点)
+    let mut vertical: Vec<(f64, f64, f64)> = Vec::new();
+    let mut horizontal: Vec<(f64, f64, f64)> = Vec::new();
+    for (_, c) in nav.children() {
+        for x in [c.x, c.right()] {
+            if x > current.x + EPS && x < current.right() - EPS {
+                vertical.push((x, c.y, c.bottom()));
+            }
+        }
+        for y in [c.y, c.bottom()] {
+            if y > current.y + EPS && y < current.bottom() - EPS {
+                horizontal.push((y, c.x, c.right()));
+            }
+        }
+    }
     let mut lines = Vec::new();
-    for piece in current.split4(axis).iter().skip(1) {
-        match axis {
-            Axis::Cols => {
-                let x = piece.x;
-                let top = current.y.max(frame.y);
-                let bottom = current.bottom().min(frame.bottom());
-                if x > frame.x && x < frame.right() && bottom > top {
-                    lines.push(Line {
-                        from: Point::new(x - frame.x, top - frame.y),
-                        to: Point::new(x - frame.x, bottom - frame.y),
-                    });
-                }
-            }
-            Axis::Rows => {
-                let y = piece.y;
-                let left = current.x.max(frame.x);
-                let right = current.right().min(frame.right());
-                if y > frame.y && y < frame.bottom() && right > left {
-                    lines.push(Line {
-                        from: Point::new(left - frame.x, y - frame.y),
-                        to: Point::new(right - frame.x, y - frame.y),
-                    });
-                }
-            }
+    for (at, from, to) in merge_segments(vertical, EPS) {
+        let (top, bottom) = (from.max(frame.y), to.min(frame.bottom()));
+        if at > frame.x && at < frame.right() && bottom > top {
+            lines.push(Line {
+                from: Point::new(at - frame.x, top - frame.y),
+                to: Point::new(at - frame.x, bottom - frame.y),
+            });
+        }
+    }
+    for (at, from, to) in merge_segments(horizontal, EPS) {
+        let (left, right) = (from.max(frame.x), to.min(frame.right()));
+        if at > frame.y && at < frame.bottom() && right > left {
+            lines.push(Line {
+                from: Point::new(left - frame.x, at - frame.y),
+                to: Point::new(right - frame.x, at - frame.y),
+            });
         }
     }
     lines
 }
 
+/// 同じ座標で重なる・つながる線分を1本にまとめる。座標、始点の順に並べて返す。
+fn merge_segments(mut segments: Vec<(f64, f64, f64)>, eps: f64) -> Vec<(f64, f64, f64)> {
+    segments.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mut out: Vec<(f64, f64, f64)> = Vec::new();
+    for (at, from, to) in segments {
+        match out.last_mut() {
+            Some(last) if (last.0 - at).abs() < eps && from <= last.2 + eps => {
+                last.2 = last.2.max(to);
+            }
+            _ => out.push((at, from, to)),
+        }
+    }
+    out
+}
+
 /// 確定したセルの外側に出すキー。次に打つ向きは左から、その次の向きは上から並べる。
 fn edge_keys(nav: &Nav, current: Rect, edge_size: f64) -> Vec<(char, Point, bool)> {
+    let Some(axis) = nav.refine_axis() else {
+        return Vec::new();
+    };
     let keys = nav.keys();
-    let depth = nav.depth();
     let gap = edge_size / 2.0 + 2.0;
     let mut out = Vec::new();
-    for (axis, next) in [(nav.axis_at(depth), true), (nav.axis_at(depth + 1), false)] {
+    for (axis, next) in [(axis, true), (axis.other(), false)] {
         for (index, piece) in current.split4(axis).iter().enumerate() {
             let center = match axis {
                 Axis::Cols => Point::new(piece.center().x, current.y - gap),
@@ -269,6 +290,7 @@ fn edge_keys(nav: &Nav, current: Rect, edge_size: f64) -> Vec<(char, Point, bool
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Subdivide;
     use crate::controller::{Controller, Effect};
     use crate::geometry::testing::*;
     use crate::monitors::Scope;
@@ -479,9 +501,69 @@ mod tests {
     fn controller_uses_same_scene() {
         // 起動直後の表示が Controller の Show と同じ内容になること
         let mut config = Config::default();
-        config.grid.extra_chars = 0;
+        config.grid.subdivide = Subdivide::Off;
         let mut controller = Controller::new(config.clone()).unwrap();
         let effects = controller.activate(|| (vec![mon(M)], Point::new(0.0, 0.0)));
         assert_eq!(effects, vec![Effect::Show(scenes(&nav_of(&[M]), &config))]);
+    }
+
+    fn half_nav() -> Nav {
+        nav_of(&[M]).with_subdivide(Subdivide::Half)
+    }
+
+    fn is_vertical(l: &Line) -> bool {
+        approx(l.from.x, l.to.x)
+    }
+
+    #[test]
+    fn half_at_start() {
+        let config = Config::default();
+        let scene = one(&half_nav(), &config);
+        assert_eq!(scene.labels.len(), 512);
+        assert_eq!(scene.faint_lines.iter().filter(|l| is_vertical(l)).count(), 31);
+        assert_eq!(scene.faint_lines.iter().filter(|l| !is_vertical(l)).count(), 15);
+        let xs: Vec<f64> = scene.strong_lines.iter().map(|l| l.from.x).collect();
+        assert_eq!(xs, vec![360.0, 720.0, 1080.0]);
+    }
+
+    #[test]
+    fn half_after_llk() {
+        let config = Config::default();
+        let mut nav = half_nav();
+        type_str(&mut nav, "llk");
+        let scene = one(&nav, &config);
+        assert_eq!(scene.labels.len(), 8);
+        assert!(scene.labels.iter().all(|l| l.next));
+        let expected = [
+            Rect::new(0.0, 0.0, 1440.0, 450.0),
+            Rect::new(0.0, 675.0, 1440.0, 225.0),
+            Rect::new(0.0, 450.0, 810.0, 225.0),
+            Rect::new(900.0, 450.0, 540.0, 225.0),
+        ];
+        assert_eq!(scene.dims.len(), 4);
+        for (got, want) in scene.dims.iter().zip(expected) {
+            assert!(rect_approx(*got, want));
+        }
+        assert_eq!(scene.strong_lines.len(), 2);
+        let v = scene.strong_lines.iter().find(|l| is_vertical(l)).unwrap();
+        assert!(approx(v.from.x, 855.0) && approx(v.from.y, 450.0) && approx(v.to.y, 675.0));
+        let h = scene.strong_lines.iter().find(|l| !is_vertical(l)).unwrap();
+        assert!(approx(h.from.y, 506.25) && approx(h.from.x, 810.0) && approx(h.to.x, 900.0));
+    }
+
+    #[test]
+    fn half_after_llk_semicolon() {
+        let config = Config::default();
+        let mut nav = half_nav();
+        type_str(&mut nav, "llk;");
+        let scene = one(&nav, &config);
+        assert_eq!(scene.strong_lines.len(), 2);
+        let mut ys: Vec<f64> = scene.strong_lines.iter().map(|l| l.from.y).collect();
+        ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert!(approx(ys[0], 562.5) && approx(ys[1], 618.75));
+        assert!(scene
+            .strong_lines
+            .iter()
+            .all(|l| approx(l.from.x, 855.0) && approx(l.to.x, 900.0)));
     }
 }

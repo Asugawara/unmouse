@@ -81,7 +81,7 @@ impl Controller {
             self.config.max_cell(),
         )
         .with_keys(self.chars)
-        .with_extra_chars(self.config.grid.extra_chars);
+        .with_subdivide(self.config.grid.subdivide);
         let effects = vec![Effect::Show(scenes(&nav, &self.config))];
         self.session = Some(Session {
             start: nav.clone(),
@@ -157,7 +157,7 @@ impl Controller {
         if !change(&mut session.nav) {
             return Vec::new();
         }
-        let decided = session.nav.depth() >= session.nav.leaf_depth();
+        let decided = session.nav.is_determined();
         let Some(to) = session.nav.target().filter(|_| decided) else {
             return vec![Effect::Update(scenes(&session.nav, &self.config))];
         };
@@ -276,6 +276,7 @@ impl Controller {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Subdivide;
     use crate::geometry::testing::*;
 
     const J: u16 = 0x26;
@@ -300,7 +301,7 @@ mod tests {
             ..Config::default()
         };
         config.grid.refine = true;
-        config.grid.extra_chars = 0;
+        config.grid.subdivide = Subdivide::Off;
         Controller::new(config).unwrap()
     }
 
@@ -309,7 +310,7 @@ mod tests {
             hotkey: "ctrl+alt+j".to_string(),
             ..Config::default()
         };
-        config.grid.extra_chars = 0;
+        config.grid.subdivide = Subdivide::Off;
         Controller::new(config).unwrap()
     }
 
@@ -738,5 +739,96 @@ mod tests {
                 Effect::Mouse(MouseOp::Up(Button::Left), start),
             ]
         );
+    }
+
+    fn half_started(refine: bool) -> Controller {
+        let mut config = Config {
+            hotkey: "ctrl+alt+j".to_string(),
+            ..Config::default()
+        };
+        config.grid.refine = refine;
+        config.grid.subdivide = Subdivide::Half;
+        let mut c = Controller::new(config).unwrap();
+        hotkey(&mut c);
+        c
+    }
+
+    #[test]
+    fn half_five_char_label_closes_and_moves() {
+        let mut c = half_started(false);
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        // 5文字目の前は閉じない
+        assert!(c.is_active());
+        let result = key(&mut c, L);
+        assert_eq!(
+            result.effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: Point::new(877.5, 646.875),
+                    dragging: false,
+                },
+            ]
+        );
+        assert!(!c.is_active());
+    }
+
+    #[test]
+    fn half_four_char_label_closes_and_moves() {
+        let mut c = half_started(false);
+        type_keys(&mut c, &[L, L, K]);
+        let result = key(&mut c, J);
+        assert_eq!(
+            result.effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: Point::new(832.5, 478.125),
+                    dragging: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn half_semicolon_step_only_updates_and_space_clicks() {
+        let mut c = half_started(false);
+        type_keys(&mut c, &[L, L, K]);
+        let result = key(&mut c, SEMI);
+        assert!(matches!(result.effects.as_slice(), [Effect::Update(_)]));
+        let result = key(&mut c, SPACE);
+        assert_eq!(
+            result.effects,
+            vec![
+                Effect::Hide,
+                Effect::Mouse(
+                    MouseOp::Click {
+                        button: Button::Left,
+                        count: 1
+                    },
+                    Point::new(877.5, 590.625)
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn half_refine_keeps_session_after_four_chars() {
+        let mut c = half_started(true);
+        type_keys(&mut c, &[L, L, K]);
+        let result = key(&mut c, J);
+        assert!(c.is_active());
+        match result.effects.as_slice() {
+            [Effect::Update(scenes), Effect::MoveCursor { to, dragging: false }] => {
+                assert_eq!(*to, Point::new(832.5, 478.125));
+                let keys = &scenes[0].edge_keys;
+                assert_eq!(keys.len(), 8);
+                // 葉 45x56.25 は縦が長いので、次に打つ4つは行（セルの左）に並ぶ
+                let next: Vec<_> = keys.iter().filter(|k| k.next).collect();
+                assert_eq!(next.len(), 4);
+                assert!(next.iter().all(|k| k.center.x < 810.0));
+            }
+            other => panic!("unexpected effects: {other:?}"),
+        }
     }
 }
