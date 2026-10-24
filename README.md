@@ -41,7 +41,7 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 
 ## 使い方
 
-1. ホットキー `ctrl+alt+j`（既定）を押す。全モニターにラベルが出ます。
+1. 右 Cmd を2回タップする（既定）。全モニターにラベルが出ます。Cmd を使うショートカットは邪魔しません。
 2. 目標の上のラベルを `j` `k` `l` `;` で打つ。セルが細分され、さらに絞り込まれます。
 3. 操作キーで確定する。
 
@@ -52,7 +52,7 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 | `f` | カーソルを置くだけで終了 |
 | `g` | ドラッグの開始と終了 |
 | `h` か `Backspace` | 1文字戻る |
-| `Esc` か起動ホットキー（既定 `ctrl+alt+j`） | 取り消す |
+| `Esc` か、起動の操作をもう一度（右 Cmd の2回タップ） | 取り消す |
 
 ## 設定
 
@@ -60,7 +60,8 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 
 全項目は `config.example.toml` を参照してください。よく変える項目は次のとおりです。
 
-- `hotkey`: 起動ホットキー（既定 `"ctrl+alt+j"`）。トップレベルに書きます。
+- `hotkey`: 起動の操作（既定 `"double:right_cmd"`）。トップレベルに書きます。修飾キーの2回タップは `"double:right_cmd"`（ほかに `left_cmd` `right_option` `left_option` `right_shift` `left_shift` `right_ctrl` `left_ctrl`）、キーの組み合わせは `"ctrl+alt+j"` の形で書きます。
+- `double_tap_ms`: 2回タップの間隔と、1回の押下の上限（ms、100〜1000、既定 300）。トップレベルに書きます。
 - `label_size`: ラベルの文字サイズ（pt、6〜48）。`[style]` に書きます。
 - `label_layout`: `"inline"`（既定）はセルの中に1まとまりで出します。`"corners"` は4隅に1文字ずつ出します（4文字のときだけ）。`[style]` に書きます。
 - `max_cell`: 1つのセルの最大サイズ（pt、`[width, height]`）。大きいほどセルが粗くなります。`[grid]` に書きます。
@@ -76,7 +77,7 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 
 | コマンド | 内容 |
 |---|---|
-| `unmouse run` | 常駐して、ホットキーで起動する（既定） |
+| `unmouse run [--verbose]` | 常駐して、起動の操作で起動する（既定）。起動時に権限・tap・起動の操作を標準エラーに出します。`--verbose` で受けたキーイベントを1行ずつ出します |
 | `unmouse doctor` | 権限・イベントタップ・Secure Input・設定・モニターを確かめる |
 | `unmouse layout` | モニター、文字数、各モニターのセルの大きさを表示する |
 | `unmouse cursor` | 今のカーソル位置を表示する |

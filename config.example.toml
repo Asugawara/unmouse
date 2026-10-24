@@ -1,4 +1,5 @@
-hotkey = "ctrl+alt+j"
+hotkey = "double:right_cmd"   # 修飾キーの2回タップ。"ctrl+alt+j" のようなキーの組み合わせも可
+double_tap_ms = 300           # 2回タップの間隔と、1回の押下の上限（ms）。100〜1000
 
 [grid]
 keys = ["j", "k", "l", ";"]

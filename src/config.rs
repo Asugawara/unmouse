@@ -6,13 +6,15 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
 
-use crate::keys::{KeyMap, parse_hotkey};
+use crate::keys::KeyMap;
 use crate::monitors::Scope;
+use crate::trigger::Trigger;
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub hotkey: String,
+    pub double_tap_ms: u64,
     pub grid: Grid,
     pub actions: Actions,
     pub style: Style,
@@ -65,7 +67,8 @@ pub struct Style {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            hotkey: "ctrl+alt+j".to_string(),
+            hotkey: "double:right_cmd".to_string(),
+            double_tap_ms: 300,
             grid: Grid::default(),
             actions: Actions::default(),
             style: Style::default(),
@@ -151,6 +154,11 @@ impl Config {
         Ok(out)
     }
 
+    /// `hotkey` を読んだ起動の合図。
+    pub fn trigger(&self) -> Result<Trigger> {
+        Trigger::parse(&self.hotkey).context("hotkey")
+    }
+
     pub fn max_cell(&self) -> (f64, f64) {
         (self.grid.max_cell[0], self.grid.max_cell[1])
     }
@@ -161,7 +169,12 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
-        parse_hotkey(&self.hotkey).context("hotkey")?;
+        self.trigger()?;
+        ensure!(
+            (100..=1000).contains(&self.double_tap_ms),
+            "double_tap_ms は 100 以上 1000 以下にしてください（指定: {}）",
+            self.double_tap_ms
+        );
         KeyMap::from_config(self)?;
         self.accent_rgb()?;
 
@@ -236,10 +249,30 @@ mod tests {
     fn hotkey_only_override_keeps_defaults() {
         let c = Config::from_toml("hotkey = \"ctrl+alt+k\"").unwrap();
         assert_eq!(c.hotkey, "ctrl+alt+k");
+        assert_eq!(c.double_tap_ms, 300);
         let d = Config::default();
         assert_eq!(c.grid, d.grid);
         assert_eq!(c.actions, d.actions);
         assert_eq!(c.style, d.style);
+    }
+
+    #[test]
+    fn default_trigger_is_double_right_cmd() {
+        let c = Config::default();
+        assert_eq!(c.hotkey, "double:right_cmd");
+        assert_eq!(
+            c.trigger().unwrap(),
+            Trigger::DoubleTap(crate::trigger::Modifier::RightCmd)
+        );
+        assert!(Config::from_toml("hotkey = \"double:foo\"").is_err());
+    }
+
+    #[test]
+    fn double_tap_ms_range() {
+        assert!(Config::from_toml("double_tap_ms = 99").is_err());
+        assert!(Config::from_toml("double_tap_ms = 1001").is_err());
+        assert_eq!(Config::from_toml("double_tap_ms = 100").unwrap().double_tap_ms, 100);
+        assert_eq!(Config::from_toml("double_tap_ms = 1000").unwrap().double_tap_ms, 1000);
     }
 
     #[test]

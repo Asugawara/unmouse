@@ -102,6 +102,15 @@ impl Controller {
         }
     }
 
+    /// 起動の合図（修飾キーの2回タップなど）を受けた。待機中なら起動し、起動中なら取り消す。
+    pub fn on_trigger(&mut self, env: impl FnOnce() -> (Vec<Monitor>, Point)) -> Vec<Effect> {
+        if self.is_active() {
+            self.cancel_external()
+        } else {
+            self.activate(env)
+        }
+    }
+
     pub fn on_key_down(
         &mut self,
         keycode: u16,
@@ -109,14 +118,9 @@ impl Controller {
         env: impl FnOnce() -> (Vec<Monitor>, Point),
     ) -> KeyResult {
         if self.keys.is_hotkey(keycode, mods) {
-            let effects = if self.is_active() {
-                self.cancel_external()
-            } else {
-                self.activate(env)
-            };
             return KeyResult {
                 consume: true,
-                effects,
+                effects: self.on_trigger(env),
             };
         }
         if !self.is_active() {
@@ -270,7 +274,11 @@ mod tests {
     const HOTKEY_KEY: u16 = 0x26;
 
     fn controller() -> Controller {
-        Controller::new(Config::default()).unwrap()
+        let config = Config {
+            hotkey: "ctrl+alt+j".to_string(),
+            ..Config::default()
+        };
+        Controller::new(config).unwrap()
     }
 
     fn env() -> (Vec<Monitor>, Point) {
@@ -307,6 +315,26 @@ mod tests {
             [Effect::Show(scenes)] if scenes.len() == 1
         ));
         assert!(c.is_active());
+    }
+
+    #[test]
+    fn trigger_toggles_between_show_and_hide() {
+        let mut c = Controller::new(Config::default()).unwrap();
+        assert!(matches!(
+            c.on_trigger(env).as_slice(),
+            [Effect::Show(scenes)] if scenes.len() == 1
+        ));
+        assert!(c.is_active());
+        assert_eq!(c.on_trigger(env), vec![Effect::Hide]);
+        assert!(!c.is_active());
+    }
+
+    #[test]
+    fn double_tap_config_ignores_chord_keys() {
+        let mut c = Controller::new(Config::default()).unwrap();
+        let result = hotkey(&mut c);
+        assert!(!result.consume);
+        assert!(!c.is_active());
     }
 
     #[test]

@@ -17,12 +17,13 @@ use objc2_foundation::{NSNotificationCenter, NSObject};
 use super::mouse::Mouse;
 use super::overlay::Overlay;
 use super::screens;
-use super::tap::Tap;
+use super::tap::{DoubleTap, Tap};
 use crate::config::Config;
 use crate::controller::{Controller, Effect};
 use crate::geometry::Point;
 use crate::keys::Mods;
 use crate::monitors::Monitor;
+use crate::trigger::{DoubleTapDetector, Trigger};
 
 /// 1回のキー処理の結果。
 pub struct KeyOutcome {
@@ -74,6 +75,21 @@ impl Runtime {
             target,
             elapsed: start.elapsed(),
         }
+    }
+
+    /// 起動の合図（修飾キーの2回タップ）。待機中なら起動し、起動中なら取り消す。
+    pub fn trigger(&mut self) {
+        let mtm = self.mtm;
+        let mut snapshot = None;
+        let effects = self.controller.on_trigger(|| {
+            let m = screens::monitors(mtm);
+            snapshot = Some(m.clone());
+            (m, screens::cursor())
+        });
+        if let Some(m) = snapshot {
+            self.monitors = m;
+        }
+        self.apply(effects);
     }
 
     pub fn cancel_external(&mut self) {
@@ -158,15 +174,37 @@ define_class!(
 );
 
 /// 常駐して、ホットキーで起動する。戻らない。
-pub fn run(mtm: MainThreadMarker, config: Config) -> Result<()> {
+pub fn run(mtm: MainThreadMarker, config: Config, verbose: bool) -> Result<()> {
     let app = init_app(mtm);
+    let trigger = config.trigger()?;
+    let double_tap_ms = config.double_tap_ms;
+    let hotkey_text = config.hotkey.clone();
     let runtime = Rc::new(RefCell::new(Runtime::new(mtm, config)?));
 
     let handler_runtime = Rc::clone(&runtime);
-    let tap = Tap::new(Box::new(move |code, mods| {
-        handler_runtime.borrow_mut().key_down(code, mods).consume
-    }))
-    .context("event tap を作れません（Accessibility の許可が必要です）")?;
+    let double_tap = match trigger {
+        Trigger::DoubleTap(modifier) => {
+            let trigger_runtime = Rc::clone(&runtime);
+            Some(DoubleTap {
+                detector: DoubleTapDetector::new(modifier, double_tap_ms),
+                on_trigger: Box::new(move || trigger_runtime.borrow_mut().trigger()),
+            })
+        }
+        Trigger::Chord(_) => None,
+    };
+    let tap = Tap::new(
+        Box::new(move |code, mods| handler_runtime.borrow_mut().key_down(code, mods).consume),
+        double_tap,
+        verbose,
+    );
+    eprintln!("event tap: {}", if tap.is_some() { "ok" } else { "failed" });
+    let tap = tap.context(
+        "event tap を作れません（Accessibility と入力監視の許可が、この実行ファイルを起動したアプリに必要です）",
+    )?;
+    match trigger {
+        Trigger::DoubleTap(m) => eprintln!("trigger: double {} ({double_tap_ms}ms)", m.name()),
+        Trigger::Chord(_) => eprintln!("trigger: chord {hotkey_text}"),
+    }
 
     // モニター構成が変わったら、表示中の操作を取り消す。
     let observer_runtime = Rc::clone(&runtime);

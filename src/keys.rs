@@ -6,6 +6,7 @@ use std::ops::BitOr;
 use anyhow::{Context, Result, bail, ensure};
 
 use crate::config::Config;
+use crate::trigger::Trigger;
 
 /// 修飾キーの集合。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -159,13 +160,17 @@ fn insert_unique(
 /// 設定から作る、キーコードの割り当て表。
 #[derive(Debug, Clone)]
 pub struct KeyMap {
-    hotkey: (u16, Mods),
+    /// ホットキー。修飾キーの2回タップのときは `None`。
+    hotkey: Option<(u16, Mods)>,
     commands: HashMap<u16, Command>,
 }
 
 impl KeyMap {
     pub fn from_config(config: &Config) -> Result<Self> {
-        let hotkey = parse_hotkey(&config.hotkey).context("hotkey")?;
+        let hotkey = match config.trigger()? {
+            Trigger::Chord(h) => Some(h),
+            Trigger::DoubleTap(_) => None,
+        };
         let mut commands = HashMap::new();
 
         for ch in config.key_chars()? {
@@ -197,7 +202,7 @@ impl KeyMap {
     }
 
     pub fn is_hotkey(&self, keycode: u16, mods: Mods) -> bool {
-        self.hotkey == (keycode, mods)
+        self.hotkey == Some((keycode, mods))
     }
 
     /// 起動中は修飾キーを見ない。
@@ -219,7 +224,11 @@ mod tests {
     const ESC: u16 = 0x35;
 
     fn map() -> KeyMap {
-        KeyMap::from_config(&Config::default()).unwrap()
+        let config = Config {
+            hotkey: "ctrl+alt+j".to_string(),
+            ..Config::default()
+        };
+        KeyMap::from_config(&config).unwrap()
     }
 
     #[test]
@@ -269,6 +278,12 @@ mod tests {
         assert!(parse_hotkey("hyper+j").is_err());
         assert!(map().is_hotkey(J, Mods::CTRL | Mods::ALT));
         assert!(!map().is_hotkey(J, Mods::NONE));
+    }
+
+    #[test]
+    fn double_tap_trigger_has_no_chord() {
+        let m = KeyMap::from_config(&Config::default()).unwrap();
+        assert!(!m.is_hotkey(J, Mods::CTRL | Mods::ALT));
     }
 
     #[test]

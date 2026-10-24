@@ -11,7 +11,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// 常駐して、ホットキーで起動する（既定）
-    Run,
+    Run {
+        /// 受けたキーイベントを標準エラーに1行ずつ出す
+        #[arg(long)]
+        verbose: bool,
+    },
     /// 権限・tap・Secure Input・設定・モニターを確かめる
     Doctor,
     /// モニター、文字数、各モニターのセルの大きさを表示する
@@ -37,8 +41,8 @@ enum Command {
 fn main() -> Result<()> {
     use unmouse::platform::macos::commands;
     let cli = Cli::parse();
-    match cli.command.unwrap_or(Command::Run) {
-        Command::Run => commands::run(),
+    match cli.command.unwrap_or(Command::Run { verbose: false }) {
+        Command::Run { verbose } => commands::run(verbose),
         Command::Doctor => commands::doctor(),
         Command::Layout => commands::layout(),
         Command::Cursor => commands::cursor(),

@@ -22,13 +22,13 @@ fn nav_for(config: &Config, monitors: &[Monitor], cursor: Point) -> Result<Nav> 
     Ok(Nav::new(monitors, config.grid.scope, cursor, config.max_cell()).with_keys(config.key_chars()?))
 }
 
-pub fn run() -> Result<()> {
+pub fn run(verbose: bool) -> Result<()> {
     let mtm = main_thread()?;
     let config = Config::load()?;
-    if !permissions::accessibility_trusted(true) {
-        bail!("Accessibility が許可されていません。システム設定で、このバイナリを起動した端末に許可を与えてください");
-    }
-    app::run(mtm, config)
+    let trusted = permissions::accessibility_trusted(true);
+    eprintln!("accessibility: {}", if trusted { "ok" } else { "missing" });
+    // 許可がなければ tap も作れず、app::run が理由を付けてエラーにする。
+    app::run(mtm, config, verbose)
 }
 
 pub fn doctor() -> Result<()> {
@@ -41,8 +41,8 @@ pub fn doctor() -> Result<()> {
     );
     match Config::load() {
         Ok(c) => println!(
-            "config: ok (hotkey {}, keys {:?}, max_cell {:?}, scope {:?})",
-            c.hotkey, c.grid.keys, c.grid.max_cell, c.grid.scope
+            "config: ok (hotkey {}, double_tap_ms {}, keys {:?}, max_cell {:?}, scope {:?})",
+            c.hotkey, c.double_tap_ms, c.grid.keys, c.grid.max_cell, c.grid.scope
         ),
         Err(e) => println!("config: ERROR {e:#}"),
     }
