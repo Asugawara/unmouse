@@ -56,6 +56,8 @@ pub enum LabelLayout {
 #[serde(default, deny_unknown_fields)]
 pub struct Style {
     pub accent: String,
+    /// 次に打つ文字の色。`grid.keys` と同じ順の4つ。
+    pub key_colors: Vec<String>,
     pub dim_opacity: f64,
     pub font: String,
     pub label_size: f64,
@@ -109,6 +111,7 @@ impl Default for Style {
     fn default() -> Self {
         Self {
             accent: "#1d4ed8".to_string(),
+            key_colors: ["#1d4ed8", "#15803d", "#c2410c", "#7e22ce"].map(String::from).to_vec(),
             dim_opacity: 0.30,
             font: String::new(),
             label_size: 11.0,
@@ -172,6 +175,18 @@ impl Config {
         parse_hex(&self.style.accent)
     }
 
+    /// キー `c`（大文字可）の色。`grid.keys` の同じ位置の `style.key_colors` を読む。
+    /// `grid.keys` にないキーなら `None`。
+    pub fn key_rgb(&self, c: char) -> Option<(u8, u8, u8)> {
+        let c = c.to_ascii_lowercase().to_string();
+        let idx = self
+            .grid
+            .keys
+            .iter()
+            .position(|k| k.to_ascii_lowercase() == c)?;
+        parse_hex(self.style.key_colors.get(idx)?).ok()
+    }
+
     fn validate(&self) -> Result<()> {
         self.trigger()?;
         ensure!(
@@ -181,6 +196,13 @@ impl Config {
         );
         KeyMap::from_config(self)?;
         self.accent_rgb()?;
+        ensure!(
+            self.style.key_colors.len() == 4,
+            "style.key_colors は4個で指定してください"
+        );
+        for color in &self.style.key_colors {
+            parse_hex(color).context("style.key_colors")?;
+        }
 
         let style = &self.style;
         check_range("style.label_size", style.label_size, 6.0, 48.0)?;
@@ -315,6 +337,22 @@ mod tests {
         let c = Config::from_toml("[style]\naccent = \"#1d4ed8\"").unwrap();
         assert_eq!(c.accent_rgb().unwrap(), (29, 78, 216));
         assert!(parse_hex("1d4ed8").is_err());
+    }
+
+    #[test]
+    fn key_colors_default_and_lookup() {
+        let c = Config::default();
+        assert_eq!(c.key_rgb('j'), Some((29, 78, 216)));
+        assert_eq!(c.key_rgb(';'), Some((126, 34, 206)));
+        assert_eq!(c.key_rgb('L'), Some((194, 65, 12)));
+        assert_eq!(c.key_rgb('L'), c.key_rgb('l'));
+        assert_eq!(c.key_rgb('x'), None);
+    }
+
+    #[test]
+    fn key_colors_must_be_four_valid_colors() {
+        assert!(Config::from_toml("[style]\nkey_colors = [\"#1d4ed8\", \"#15803d\", \"#c2410c\"]").is_err());
+        assert!(Config::from_toml("[style]\nkey_colors = [\"#12345\", \"#15803d\", \"#c2410c\", \"#7e22ce\"]").is_err());
     }
 
     #[test]

@@ -217,6 +217,13 @@ fn attributed(text: &str, font: &NSFont, color: &NSColor) -> Retained<NSAttribut
     unsafe { NSAttributedString::initWithString_attributes(NSAttributedString::alloc(), &NSString::from_str(text), Some(dict)) }
 }
 
+/// 次に打つ文字の色（`style.key_colors`）。`grid.keys` にないキーなら `None`。
+fn key_color(config: &Config, c: char) -> Option<Retained<NSColor>> {
+    config
+        .key_rgb(c)
+        .map(|(r, g, b)| rgba(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, 1.0))
+}
+
 fn draw(scene: &Scene, config: &Config) {
     let style = &config.style;
     let (ar, ag, ab) = config.accent_rgb().unwrap_or((0x1d, 0x4e, 0xd8));
@@ -251,10 +258,11 @@ fn draw(scene: &Scene, config: &Config) {
     let pad = 1.5;
 
     for label in &scene.labels {
+        let next_color = key_color(config, label.strong).unwrap_or_else(|| strong_color.clone());
         let first = attributed(
             &label.strong.to_string(),
             &strong_font,
-            if label.next { &strong_color } else { &ink },
+            if label.next { &next_color } else { &ink },
         );
         let first_size = first.size();
         let rest = (!label.rest.is_empty()).then(|| attributed(&label.rest, &rest_font, &rest_color));
@@ -278,7 +286,7 @@ fn draw(scene: &Scene, config: &Config) {
     let edge_strong = font(&style.font, style.edge_key_size, true);
     for key in &scene.edge_keys {
         let color = if key.next {
-            rgba(ar * 0.6, ag * 0.6, ab * 0.9, 1.0)
+            key_color(config, key.key).unwrap_or_else(|| rgba(ar * 0.6, ag * 0.6, ab * 0.9, 1.0))
         } else {
             rgba(ar * 0.6, ag * 0.6, ab * 0.9, 0.42)
         };

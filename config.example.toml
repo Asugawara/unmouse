@@ -19,6 +19,7 @@ cancel = "escape"
 
 [style]
 accent = "#1d4ed8"
+key_colors = ["#1d4ed8", "#15803d", "#c2410c", "#7e22ce"]  # 次に打つ文字の色（keys と同じ順）
 dim_opacity = 0.30
 font = ""                # 空ならシステムの等幅（monospacedSystemFont）
 label_size = 11.0        # pt。6〜48
