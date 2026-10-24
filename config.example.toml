@@ -1,0 +1,28 @@
+hotkey = "ctrl+alt+j"
+
+[grid]
+keys = ["j", "k", "l", ";"]
+max_cell = [180.0, 100.0]
+scope = "all_monitors"   # "cursor_monitor" で neru と同じくカーソルのモニターだけ
+
+[actions]
+left_click = "space"
+right_click = "d"
+double_click = "s"
+middle_click = "a"
+move_only = "f"
+drag = "g"
+back = ["h", "backspace"]
+cancel = "escape"
+
+[style]
+accent = "#1d4ed8"
+dim_opacity = 0.30
+font = ""                # 空ならシステムの等幅（monospacedSystemFont）
+label_size = 11.0        # pt。6〜48
+min_label_size = 8.0     # セルに収まらないとき、ここまで縮める
+edge_key_size = 11.0     # 細分のキー
+label_layout = "inline"  # "corners" で4隅に1文字ずつ（4文字のときだけ）
+label_bg_opacity = 0.72
+rest_opacity = 0.42
+uppercase = false
