@@ -3,6 +3,8 @@
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::ptr::NonNull;
+use std::sync::OnceLock;
+use std::time::Instant;
 
 use objc2_core_foundation::{CFMachPort, CFRetained, CFRunLoop, kCFRunLoopCommonModes};
 use objc2_core_graphics::{
@@ -56,14 +58,21 @@ pub fn mods_from_flags(flags: CGEventFlags) -> Mods {
     m
 }
 
+/// 起動からの経過時間（ms）。CGEvent の timestamp は Apple Silicon で
+/// mach_absolute_time の単位になり ns と一致しないため、受けた時刻をこちらで測る。
+fn now_ms() -> u64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
+
 impl State {
     /// flagsChanged を検出器に渡す。2回タップが完成したら起動して `true`。
-    fn flags_changed(&mut self, code: u16, flags: u64, timestamp_ns: u64) -> bool {
+    fn flags_changed(&mut self, code: u16, flags: u64, t_ms: u64) -> bool {
         let Some(dt) = self.double_tap.as_mut() else {
             return false;
         };
         let pressed = Modifier::from_keycode(code).is_none_or(|m| m.is_down(flags));
-        if dt.detector.on_modifier(code, pressed, timestamp_ns / 1_000_000) {
+        if dt.detector.on_modifier(code, pressed, t_ms) {
             (dt.on_trigger)();
             return true;
         }
@@ -90,7 +99,7 @@ unsafe extern "C-unwind" fn callback(
     if kind == CGEventType::FlagsChanged {
         // 飲み込まない（Cmd を使うショートカットを壊さないため）。
         let flags = CGEvent::flags(Some(event_ref)).0;
-        let fired = state.flags_changed(code, flags, CGEvent::timestamp(Some(event_ref)));
+        let fired = state.flags_changed(code, flags, now_ms());
         if state.verbose {
             eprintln!("flagsChanged code=0x{code:02x} flags=0x{flags:x} fired={fired}");
         }
