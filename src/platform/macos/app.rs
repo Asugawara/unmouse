@@ -77,7 +77,7 @@ impl Runtime {
         }
     }
 
-    /// 起動の合図（修飾キーの2回タップ）。待機中なら起動し、起動中なら取り消す。
+    /// 起動の合図（修飾キーの2回タップ）。待機中なら起動し、起動中なら閉じる（打ちかけならその範囲の中心へ動かす）。
     pub fn trigger(&mut self) {
         let mtm = self.mtm;
         let mut snapshot = None;
