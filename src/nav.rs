@@ -263,7 +263,7 @@ impl Nav {
     fn node_at(&self, depth: usize, rect: Rect) -> Node {
         let n = self.axes.len();
         if n == 0 {
-            return Node::Refine(Axis::Cols);
+            return Node::Refine(long_side(rect));
         }
         if depth >= n {
             Node::Refine(long_side(rect))
@@ -718,5 +718,369 @@ mod tests {
             Some("llk;")
         );
         assert_eq!(nav.path_to(Point::new(2000.0, 100.0)), None);
+    }
+
+    fn all_modes() -> [Subdivide; 3] {
+        [Subdivide::Off, Subdivide::Half, Subdivide::Quarter]
+    }
+
+    #[test]
+    fn labels_are_unique_and_prefix_free_in_every_mode() {
+        for frames in [
+            vec![mon(M)],
+            vec![mon(MB), mon(EXT_R)],
+            vec![mon(MB), mon(EXT_TOP)],
+            vec![mon(MB), mon(EXT_R), mon(C3)],
+        ] {
+            for mode in all_modes() {
+                let nav = nav_of(&frames).with_subdivide(mode);
+                assert_prefix_free(&nav.labels());
+            }
+        }
+    }
+
+    #[test]
+    fn every_label_cell_overlaps_its_monitor() {
+        for frames in [vec![mon(MB), mon(EXT_R)], vec![mon(MB), mon(EXT_TOP)]] {
+            for mode in all_modes() {
+                let nav = nav_of(&frames).with_subdivide(mode);
+                for l in nav.labels() {
+                    let frame = frames[l.monitor].frame;
+                    assert!(l.piece.area() > 0.0, "{}", l.label);
+                    assert!(intersect(l.cell, frame).is_some(), "{}", l.label);
+                    // piece はセルとモニターの重なりそのもの
+                    assert!(rect_approx(l.piece, intersect(l.cell, frame).unwrap()), "{}", l.label);
+                    // 他のモニターとの重なりのほうが大きいことはない
+                    for other in &frames {
+                        if let Some(o) = intersect(l.cell, other.frame) {
+                            assert!(o.area() <= l.piece.area() + 1e-6, "{}", l.label);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn typing_any_label_reaches_exactly_its_cell() {
+        for frames in [
+            vec![mon(M)],
+            vec![mon(MB), mon(EXT_R)],
+            vec![mon(MB), mon(EXT_TOP)],
+        ] {
+            for mode in all_modes() {
+                let base = nav_of(&frames).with_subdivide(mode);
+                for l in base.labels() {
+                    let mut nav = base.clone();
+                    for c in l.label.chars() {
+                        assert!(
+                            !nav.is_determined(),
+                            "{mode:?} {}: 最後の文字の前に決まっている",
+                            l.label
+                        );
+                        assert!(nav.push(c), "{mode:?} {}: {c} を入力できない", l.label);
+                    }
+                    assert!(nav.is_determined(), "{mode:?} {}", l.label);
+                    assert!(rect_approx(nav.region().unwrap(), l.cell), "{mode:?} {}", l.label);
+                    assert!(
+                        point_approx(nav.target().unwrap(), l.piece.center()),
+                        "{mode:?} {}",
+                        l.label
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn path_to_round_trips_in_every_mode() {
+        for frames in [vec![mon(M)], vec![mon(MB), mon(EXT_R)], vec![mon(MB), mon(EXT_TOP)]] {
+            for mode in all_modes() {
+                let nav = nav_of(&frames).with_subdivide(mode);
+                for l in nav.labels() {
+                    assert_eq!(
+                        nav.path_to(l.piece.center()).as_deref(),
+                        Some(l.label.as_str()),
+                        "{mode:?} {}",
+                        l.label
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn path_to_outside_every_monitor_is_none() {
+        // MB と EXT_TOP の外接矩形の中だが、どのモニターにも入らない点
+        let nav = nav_of(&[mon(MB), mon(EXT_TOP)]);
+        assert!(nav.canvas().contains(Point::new(-100.0, 500.0)));
+        assert_eq!(nav.path_to(Point::new(-100.0, 500.0)), None);
+        // 半開区間: モニターの右端・下端は外
+        let nav = nav_of(&[mon(M)]);
+        assert_eq!(nav.path_to(Point::new(1440.0, 10.0)), None);
+        assert_eq!(nav.path_to(Point::new(10.0, 900.0)), None);
+        assert!(nav.path_to(Point::new(1439.9, 899.9)).is_some());
+    }
+
+    #[test]
+    fn small_screen_has_no_axes_and_is_already_determined() {
+        let small = Rect::new(0.0, 0.0, 150.0, 80.0);
+        for mode in [Subdivide::Off, Subdivide::Half] {
+            let nav = nav_of(&[mon(small)]).with_subdivide(mode);
+            assert!(nav.axes().is_empty(), "{mode:?}");
+            assert_eq!(nav.label_len_range(), (0, 0), "{mode:?}");
+            assert_eq!(nav.grid_size(), (1, 1), "{mode:?}");
+            assert!(nav.is_determined(), "{mode:?}");
+            // 何も入力していないので target はない
+            assert!(nav.target().is_none());
+            // 決まったあとの細分は長い辺（横長なので列）から
+            assert_eq!(nav.refine_axis(), Some(Axis::Cols));
+            assert_eq!(nav.children().len(), 4);
+        }
+    }
+
+    #[test]
+    fn small_tall_screen_refines_by_rows() {
+        // max_cell (180,100) 以下の縦長の画面。葉の長い辺は縦なので、細分は行から
+        let tall = Rect::new(0.0, 0.0, 80.0, 90.0);
+        let nav = nav_of(&[mon(tall)]);
+        assert!(nav.axes().is_empty());
+        assert_eq!(nav.refine_axis(), Some(Axis::Rows));
+    }
+
+    #[test]
+    fn small_screen_refines_by_typing() {
+        let small = Rect::new(0.0, 0.0, 160.0, 80.0);
+        let mut nav = nav_of(&[mon(small)]);
+        assert!(nav.push('l'));
+        assert!(rect_approx(nav.region().unwrap(), Rect::new(80.0, 0.0, 40.0, 80.0)));
+        // 次は行
+        assert_eq!(nav.refine_axis(), Some(Axis::Rows));
+        assert!(nav.push(';'));
+        assert!(rect_approx(nav.region().unwrap(), Rect::new(80.0, 60.0, 40.0, 20.0)));
+    }
+
+    #[test]
+    fn determined_cell_keeps_refining_and_alternates() {
+        let mut nav = nav_of(&[mon(M)]);
+        type_str(&mut nav, "llk;");
+        let cell = nav.region().unwrap();
+        // 決まった直後の子は、長い辺（横長なので列）の4等分
+        let kids = nav.children();
+        assert_eq!(kids.iter().map(|k| k.0).collect::<String>(), "jkl;");
+        for ((_, rect), want) in kids.iter().zip(cell.split4(Axis::Cols)) {
+            assert!(rect_approx(*rect, want));
+        }
+        // 1つ入力すると向きが入れ替わる
+        assert!(nav.push('l'));
+        assert_eq!(nav.refine_axis(), Some(Axis::Rows));
+        let region = nav.region().unwrap();
+        for ((_, rect), want) in nav.children().iter().zip(region.split4(Axis::Rows)) {
+            assert!(rect_approx(*rect, want));
+        }
+        assert!(nav.push('j'));
+        assert_eq!(nav.refine_axis(), Some(Axis::Cols));
+        assert!(nav.is_determined());
+        // 戻ると向きも戻る
+        assert!(nav.back());
+        assert_eq!(nav.refine_axis(), Some(Axis::Rows));
+        assert!(nav.back());
+        assert_eq!(nav.refine_axis(), Some(Axis::Cols));
+        assert_eq!(nav.typed(), "llk;");
+        // 葉の手前まで戻ると決まっていない
+        assert!(nav.back());
+        assert!(!nav.is_determined());
+        assert_eq!(nav.refine_axis(), None);
+    }
+
+    #[test]
+    fn children_at_start_split_the_canvas_by_the_first_axis() {
+        let nav = nav_of(&[mon(M)]);
+        let kids = nav.children();
+        assert_eq!(kids.iter().map(|k| k.0).collect::<String>(), "jkl;");
+        for ((_, rect), want) in kids.iter().zip(nav.canvas().split4(nav.axes()[0])) {
+            assert!(rect_approx(*rect, want));
+        }
+        // 次の段は行
+        let mut nav = nav_of(&[mon(M)]);
+        assert!(nav.push('l'));
+        let region = nav.region().unwrap();
+        for ((_, rect), want) in nav.children().iter().zip(region.split4(Axis::Rows)) {
+            assert!(rect_approx(*rect, want));
+        }
+    }
+
+    #[test]
+    fn custom_keys_label_and_select_cells() {
+        let nav = nav_of(&[mon(M)]).with_keys(['a', 'b', 'c', 'd']);
+        assert_eq!(nav.keys(), ['a', 'b', 'c', 'd']);
+        let labels = nav.labels();
+        assert!(labels.iter().all(|l| l.label.chars().all(|c| "abcd".contains(c))));
+        // 既定のキーでの jjjj / llk; に当たるセルは、aaaa / ccbd
+        assert!(rect_approx(find(&labels, "aaaa").cell, Rect::new(0.0, 0.0, 90.0, 56.25)));
+        assert!(rect_approx(find(&labels, "ccbd").cell, Rect::new(810.0, 618.75, 90.0, 56.25)));
+        assert_eq!(nav.path_to(Point::new(892.8, 630.0)).as_deref(), Some("ccbd"));
+
+        let mut nav = nav;
+        assert!(!nav.push('j'), "既定のキーは使えない");
+        assert!(nav.push('c'));
+        assert!(rect_approx(nav.region().unwrap(), Rect::new(720.0, 0.0, 360.0, 900.0)));
+    }
+
+    #[test]
+    fn cursor_monitor_scope_limits_labels_and_path() {
+        let monitors = [mon(MB), mon(EXT_R)];
+        let nav = Nav::new(&monitors, Scope::CursorMonitor, Point::new(2000.0, 0.0), MAX_CELL);
+        assert!(rect_approx(nav.canvas(), EXT_R));
+        assert_eq!(nav.active().len(), 1);
+        assert_eq!(nav.active()[0].0, 1);
+        assert_eq!(nav.axes(), vec![Axis::Cols, Axis::Rows, Axis::Cols, Axis::Rows]);
+        let labels = nav.labels();
+        assert_eq!(labels.len(), 256);
+        assert!(labels.iter().all(|l| l.monitor == 1));
+        // 対象外のモニターの上の点は指せない
+        assert_eq!(nav.path_to(Point::new(100.0, 100.0)), None);
+        assert!(nav.path_to(Point::new(2000.0, 100.0)).is_some());
+    }
+
+    #[test]
+    fn cursor_monitor_scope_falls_back_to_first_monitor() {
+        let monitors = [mon(MB), mon(EXT_R)];
+        let nav = Nav::new(&monitors, Scope::CursorMonitor, Point::new(-9999.0, 0.0), MAX_CELL);
+        assert!(rect_approx(nav.canvas(), MB));
+        assert_eq!(nav.active()[0].0, 0);
+    }
+
+    #[test]
+    fn all_monitors_active_lists_every_monitor_with_its_frame() {
+        let nav = nav_of(&[mon(MB), mon(EXT_R)]);
+        let active = nav.active();
+        assert_eq!(active.len(), 2);
+        assert_eq!((active[0].0, active[1].0), (0, 1));
+        assert!(rect_approx(active[0].1, MB) && rect_approx(active[1].1, EXT_R));
+    }
+
+    #[test]
+    fn cell_size_is_canvas_over_grid() {
+        let nav = nav_of(&[mon(M)]);
+        assert_eq!(nav.grid_size(), (16, 16));
+        assert_eq!(nav.cell_size(), (90.0, 56.25));
+        let nav = nav_of(&[mon(M)]).with_subdivide(Subdivide::Quarter);
+        assert_eq!(nav.grid_size(), (64, 16));
+        assert_eq!(nav.cell_size(), (22.5, 56.25));
+        let nav = nav_of(&[mon(MB), mon(EXT_R)]);
+        assert_eq!(nav.grid_size(), (64, 16));
+        let (w, h) = nav.cell_size();
+        assert!(approx(w, 63.625) && approx(h, 90.0));
+        let nav = half_of(&[mon(MB), mon(EXT_R)]);
+        assert_eq!(nav.grid_size(), (64, 32));
+    }
+
+    #[test]
+    fn half_back_unwinds_every_step() {
+        let mut nav = half_of(&[mon(M)]);
+        type_str(&mut nav, "llk;l");
+        assert!(nav.is_determined());
+        for want in ["llk;", "llk", "ll", "l", ""] {
+            assert!(nav.back());
+            assert_eq!(nav.typed(), want);
+            assert!(!nav.is_determined());
+        }
+        assert!(!nav.back());
+        assert!(nav.region().is_none());
+    }
+
+    #[test]
+    fn half_tri_node_splits_into_three_equal_rows() {
+        let mut nav = half_of(&[mon(M)]);
+        type_str(&mut nav, "llk;");
+        let region = nav.region().unwrap();
+        let kids = nav.children();
+        assert_eq!(kids.iter().map(|k| k.0).collect::<String>(), "jkl");
+        for (i, (_, rect)) in kids.iter().enumerate() {
+            assert!(approx(rect.h, region.h / 3.0) && approx(rect.w, region.w));
+            assert!(approx(rect.y, region.y + region.h / 3.0 * i as f64));
+        }
+        // 3つとも葉
+        for c in ['j', 'k', 'l'] {
+            let mut n = nav.clone();
+            assert!(n.push(c));
+            assert!(n.is_determined());
+        }
+    }
+
+    #[test]
+    fn half_special_node_children_match_rule() {
+        // llk の矩形 (810,450,90,225) を、j: 上の帯の左半分、k: 上の帯の右半分、
+        // l/;: 残り3帯の左/右半分
+        let mut nav = half_of(&[mon(M)]);
+        type_str(&mut nav, "llk");
+        let kids = nav.children();
+        let want = [
+            ('j', Rect::new(810.0, 450.0, 45.0, 56.25)),
+            ('k', Rect::new(855.0, 450.0, 45.0, 56.25)),
+            ('l', Rect::new(810.0, 506.25, 45.0, 168.75)),
+            (';', Rect::new(855.0, 506.25, 45.0, 168.75)),
+        ];
+        assert_eq!(kids.len(), 4);
+        for ((key, rect), (wkey, wrect)) in kids.iter().zip(want) {
+            assert_eq!(*key, wkey);
+            assert!(rect_approx(*rect, wrect), "{key}");
+        }
+    }
+
+    #[test]
+    fn quarter_on_small_screen_adds_one_axis() {
+        let small = Rect::new(0.0, 0.0, 150.0, 80.0);
+        let quarter = nav_of(&[mon(small)]).with_subdivide(Subdivide::Quarter);
+        assert_eq!(quarter.axes(), vec![Axis::Cols]);
+        assert_eq!(quarter.label_len_range(), (1, 1));
+        assert_eq!(quarter.labels().len(), 4);
+    }
+
+    #[test]
+    fn half_repeated_push_stops() {
+        let mut nav = half_of(&[mon(M)]);
+        let mut accepted = 0;
+        while nav.push('j') {
+            accepted += 1;
+            assert!(accepted < 40, "push never rejected");
+        }
+    }
+
+    #[test]
+    fn label_len_range_per_mode() {
+        let one = [mon(M)];
+        let two = [mon(MB), mon(EXT_R)];
+        assert_eq!(nav_of(&one).label_len_range(), (4, 4));
+        assert_eq!(nav_of(&one).with_subdivide(Subdivide::Off).label_len_range(), (4, 4));
+        assert_eq!(nav_of(&one).with_subdivide(Subdivide::Half).label_len_range(), (4, 5));
+        assert_eq!(nav_of(&one).with_subdivide(Subdivide::Quarter).label_len_range(), (5, 5));
+        assert_eq!(nav_of(&two).label_len_range(), (5, 5));
+        assert_eq!(nav_of(&two).with_subdivide(Subdivide::Half).label_len_range(), (5, 6));
+        assert_eq!(nav_of(&two).with_subdivide(Subdivide::Quarter).label_len_range(), (6, 6));
+    }
+
+    #[test]
+    fn with_subdivide_can_be_switched_back_to_off() {
+        let nav = nav_of(&[mon(M)]).with_subdivide(Subdivide::Quarter).with_subdivide(Subdivide::Off);
+        assert_eq!(nav.axes().len(), 4);
+        assert_eq!(nav.labels().len(), 256);
+        let nav = nav_of(&[mon(M)]).with_subdivide(Subdivide::Half).with_subdivide(Subdivide::Off);
+        assert_eq!(nav.label_len_range(), (4, 4));
+    }
+
+    #[test]
+    fn push_rejects_cells_thinner_than_one_point_in_every_mode() {
+        for mode in all_modes() {
+            let mut nav = nav_of(&[mon(M)]).with_subdivide(mode);
+            let mut accepted = 0;
+            while nav.push('j') {
+                accepted += 1;
+                assert!(accepted < 40, "{mode:?}");
+            }
+            let r = nav.region().unwrap();
+            assert!(r.w >= 1.0 && r.h >= 1.0, "{mode:?}: 受け付けた領域が 1pt 未満 {r:?}");
+        }
     }
 }

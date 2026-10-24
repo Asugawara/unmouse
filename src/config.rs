@@ -250,7 +250,7 @@ fn check_range(name: &str, value: f64, min: f64, max: f64) -> Result<()> {
 pub fn parse_hex(s: &str) -> Result<(u8, u8, u8)> {
     let hex = s
         .strip_prefix('#')
-        .filter(|h| h.len() == 6)
+        .filter(|h| h.len() == 6 && h.bytes().all(|b| b.is_ascii_hexdigit()))
         .with_context(|| format!("色は #rrggbb の形で指定してください: {s:?}"))?;
     let part = |range: std::ops::Range<usize>| {
         u8::from_str_radix(&hex[range], 16)
@@ -408,5 +408,227 @@ mod tests {
         assert_eq!(parse("[style]\nlabel_layout = \"center\""), LabelLayout::Center);
         assert_eq!(parse("[style]\nlabel_layout = \"corners\""), LabelLayout::Corners);
         assert_eq!(parse(""), LabelLayout::Center);
+    }
+
+    #[test]
+    fn label_layout_unknown_value_is_error() {
+        assert!(Config::from_toml("[style]\nlabel_layout = \"foo\"").is_err());
+    }
+
+    #[test]
+    fn scope_parses_and_defaults_to_all_monitors() {
+        let parse = |text: &str| Config::from_toml(text).unwrap().grid.scope;
+        assert_eq!(parse(""), Scope::AllMonitors);
+        assert_eq!(parse("[grid]\nscope = \"all_monitors\""), Scope::AllMonitors);
+        assert_eq!(parse("[grid]\nscope = \"cursor_monitor\""), Scope::CursorMonitor);
+        assert!(Config::from_toml("[grid]\nscope = \"foo\"").is_err());
+    }
+
+    #[test]
+    fn unknown_fields_in_sections_are_errors() {
+        assert!(Config::from_toml("[grid]\nbogus = 1").is_err());
+        assert!(Config::from_toml("[actions]\nbogus = \"x\"").is_err());
+        assert!(Config::from_toml("[style]\nbogus = 1").is_err());
+        // 以前の設定名（extra_chars）は使えない
+        assert!(Config::from_toml("[grid]\nextra_chars = 1").is_err());
+    }
+
+    #[test]
+    fn wrong_types_and_broken_toml_are_errors() {
+        assert!(Config::from_toml("double_tap_ms = \"fast\"").is_err());
+        assert!(Config::from_toml("[grid]\nrefine = \"yes\"").is_err());
+        assert!(Config::from_toml("[style]\nuppercase = 1").is_err());
+        assert!(Config::from_toml("[grid\nrefine = true").is_err());
+    }
+
+    #[test]
+    fn invalid_hotkey_is_error() {
+        assert!(Config::from_toml("hotkey = \"ctrl+foo\"").is_err());
+        assert!(Config::from_toml("hotkey = \"double:\"").is_err());
+        assert!(Config::from_toml("hotkey = \"\"").is_err());
+        let chord = Config::from_toml("hotkey = \"ctrl+alt+j\"").unwrap();
+        assert_eq!(
+            chord.trigger().unwrap(),
+            Trigger::Chord((0x26, crate::keys::Mods::CTRL | crate::keys::Mods::ALT))
+        );
+    }
+
+    #[test]
+    fn max_cell_must_be_positive() {
+        assert!(Config::from_toml("[grid]\nmax_cell = [0.0, 100.0]").is_err());
+        assert!(Config::from_toml("[grid]\nmax_cell = [180.0, 0.0]").is_err());
+        assert!(Config::from_toml("[grid]\nmax_cell = [-1.0, 100.0]").is_err());
+        assert!(Config::from_toml("[grid]\nmax_cell = [180.0]").is_err());
+        let c = Config::from_toml("[grid]\nmax_cell = [200.0, 120.0]").unwrap();
+        assert_eq!(c.max_cell(), (200.0, 120.0));
+        assert_eq!(Config::default().max_cell(), (180.0, 100.0));
+    }
+
+    #[test]
+    fn opacity_ranges_are_zero_to_one_inclusive() {
+        for name in ["dim_opacity", "label_bg_opacity", "rest_opacity"] {
+            assert!(Config::from_toml(&format!("[style]\n{name} = 0.0")).is_ok(), "{name}");
+            assert!(Config::from_toml(&format!("[style]\n{name} = 1.0")).is_ok(), "{name}");
+            assert!(Config::from_toml(&format!("[style]\n{name} = -0.1")).is_err(), "{name}");
+            assert!(Config::from_toml(&format!("[style]\n{name} = 1.1")).is_err(), "{name}");
+        }
+    }
+
+    #[test]
+    fn size_ranges_are_six_to_forty_eight_inclusive() {
+        // label_size は min_label_size 以上である必要があるので、下限は min も 6 にして確かめる
+        assert!(Config::from_toml("[style]\nlabel_size = 6\nmin_label_size = 6").is_ok());
+        assert!(Config::from_toml("[style]\nlabel_size = 48").is_ok());
+        assert!(Config::from_toml("[style]\nedge_key_size = 6").is_ok());
+        assert!(Config::from_toml("[style]\nedge_key_size = 48").is_ok());
+        assert!(Config::from_toml("[style]\nedge_key_size = 5.9").is_err());
+        assert!(Config::from_toml("[style]\nedge_key_size = 49").is_err());
+        assert!(Config::from_toml("[style]\nmin_label_size = 5.9").is_err());
+        assert!(Config::from_toml("[style]\nmin_label_size = 49").is_err());
+        // min_label_size == label_size は許される
+        assert!(Config::from_toml("[style]\nlabel_size = 10\nmin_label_size = 10").is_ok());
+        assert!(Config::from_toml("[style]\nlabel_size = 10\nmin_label_size = 10.5").is_err());
+    }
+
+    #[test]
+    fn invalid_accent_is_error() {
+        assert!(Config::from_toml("[style]\naccent = \"red\"").is_err());
+        assert!(Config::from_toml("[style]\naccent = \"1d4ed8\"").is_err());
+        assert!(Config::from_toml("[style]\naccent = \"#1d4ed\"").is_err());
+        assert!(Config::from_toml("[style]\naccent = \"#1d4ed8f\"").is_err());
+        assert!(Config::from_toml("[style]\naccent = \"#gggggg\"").is_err());
+    }
+
+    #[test]
+    fn parse_hex_values() {
+        assert_eq!(parse_hex("#000000").unwrap(), (0, 0, 0));
+        assert_eq!(parse_hex("#ffffff").unwrap(), (255, 255, 255));
+        assert_eq!(parse_hex("#FFFFFF").unwrap(), (255, 255, 255));
+        assert_eq!(parse_hex("#0a0B0c").unwrap(), (10, 11, 12));
+        for bad in ["", "#", "#fff", "#1234567", "#12345g", "1d4ed8", " #1d4ed8"] {
+            assert!(parse_hex(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn parse_hex_rejects_sign_characters() {
+        // #rrggbb は16進数の6桁だけ。符号は色の値ではない
+        assert!(parse_hex("#+12345").is_err());
+        assert!(parse_hex("#12+345").is_err());
+    }
+
+    #[test]
+    fn parse_hex_multibyte_is_error_not_panic() {
+        // バイト数は6だが、2バイト文字が境目をまたぐ
+        assert!(parse_hex("#aéabc").is_err());
+        assert!(parse_hex("#ééé").is_err());
+    }
+
+    #[test]
+    fn key_colors_follow_custom_grid_keys() {
+        let c = Config::from_toml(
+            "[grid]\nkeys = [\"u\", \"i\", \"o\", \"p\"]\n[style]\nkey_colors = [\"#010203\", \"#040506\", \"#070809\", \"#0a0b0c\"]",
+        )
+        .unwrap();
+        assert_eq!(c.key_rgb('u'), Some((1, 2, 3)));
+        assert_eq!(c.key_rgb('I'), Some((4, 5, 6)));
+        assert_eq!(c.key_rgb('p'), Some((10, 11, 12)));
+        // 既定のキーはもう grid.keys にない
+        assert_eq!(c.key_rgb('j'), None);
+    }
+
+    #[test]
+    fn key_chars_returns_the_four_keys_in_order() {
+        assert_eq!(Config::default().key_chars().unwrap(), ['j', 'k', 'l', ';']);
+        let mut c = Config::default();
+        c.grid.keys = ["jj", "k", "l", ";"].map(String::from).to_vec();
+        assert!(c.key_chars().is_err());
+        c.grid.keys = ["", "k", "l", ";"].map(String::from).to_vec();
+        assert!(c.key_chars().is_err());
+        c.grid.keys = ["j", "k", "l"].map(String::from).to_vec();
+        assert!(c.key_chars().is_err());
+        c.grid.keys = ["j", "k", "l", ";", "a"].map(String::from).to_vec();
+        assert!(c.key_chars().is_err());
+    }
+
+    #[test]
+    fn key_colors_wrong_count_or_format_is_error() {
+        assert!(Config::from_toml(
+            "[style]\nkey_colors = [\"#000000\", \"#000000\", \"#000000\", \"#000000\", \"#000000\"]"
+        )
+        .is_err());
+        assert!(Config::from_toml("[style]\nkey_colors = []").is_err());
+        assert!(Config::from_toml(
+            "[style]\nkey_colors = [\"red\", \"#000000\", \"#000000\", \"#000000\"]"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn double_tap_ms_is_checked_even_with_chord_hotkey() {
+        assert!(Config::from_toml("hotkey = \"ctrl+alt+j\"\ndouble_tap_ms = 50").is_err());
+    }
+
+    #[test]
+    fn load_reads_xdg_then_home_then_default() {
+        use std::ffi::OsString;
+
+        // 環境変数を触るのはこのテストだけ。途中で失敗しても戻す。
+        struct Restore(Option<OsString>, Option<OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                unsafe {
+                    match &self.0 {
+                        Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+                        None => std::env::remove_var("XDG_CONFIG_HOME"),
+                    }
+                    match &self.1 {
+                        Some(v) => std::env::set_var("HOME", v),
+                        None => std::env::remove_var("HOME"),
+                    }
+                }
+            }
+        }
+        let _restore = Restore(
+            std::env::var_os("XDG_CONFIG_HOME"),
+            std::env::var_os("HOME"),
+        );
+
+        let root = std::env::temp_dir().join(format!("unmouse-config-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let xdg = root.join("xdg");
+        let home = root.join("home");
+        fs::create_dir_all(xdg.join("unmouse")).unwrap();
+        fs::create_dir_all(home.join(".config/unmouse")).unwrap();
+        let xdg_file = xdg.join("unmouse/config.toml");
+        let home_file = home.join(".config/unmouse/config.toml");
+
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &xdg);
+            std::env::set_var("HOME", &home);
+        }
+
+        // どちらもなければ既定値
+        assert_eq!(Config::load().unwrap(), Config::default());
+
+        // HOME 側だけ
+        fs::write(&home_file, "double_tap_ms = 123").unwrap();
+        assert_eq!(Config::load().unwrap().double_tap_ms, 123);
+
+        // XDG があれば優先する
+        fs::write(&xdg_file, "double_tap_ms = 456").unwrap();
+        assert_eq!(Config::load().unwrap().double_tap_ms, 456);
+
+        // XDG_CONFIG_HOME が空文字なら HOME 側を見る
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", "") };
+        assert_eq!(Config::load().unwrap().double_tap_ms, 123);
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", &xdg) };
+
+        // 不正な設定はエラーで、どのファイルかが分かる
+        fs::write(&xdg_file, "double_tap_ms = 5").unwrap();
+        let err = format!("{:#}", Config::load().unwrap_err());
+        assert!(err.contains(xdg_file.to_str().unwrap()), "{err}");
+
+        let _ = fs::remove_dir_all(&root);
     }
 }

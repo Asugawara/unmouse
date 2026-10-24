@@ -566,4 +566,252 @@ mod tests {
             .iter()
             .all(|l| approx(l.from.x, 855.0) && approx(l.to.x, 900.0)));
     }
+
+    #[test]
+    fn label_size_uses_the_longest_label() {
+        // 2台の half は 5 文字と 6 文字。セルの幅は 63.625、6 文字で見積もる
+        let mut config = Config::default();
+        config.style.label_size = 40.0;
+        let nav = nav_of(&[MB, EXT_R]).with_subdivide(Subdivide::Half);
+        let size = scenes(&nav, &config)[0].label_size;
+        assert!(approx(size, (63.625 - 8.0) / (0.6 * 6.0)), "{size}");
+        // 一様（5 文字）ならもう少し大きい
+        let off = scenes(&nav_of(&[MB, EXT_R]), &config)[0].label_size;
+        assert!(approx(off, (63.625 - 8.0) / (0.6 * 5.0)), "{off}");
+        assert!(off > size);
+    }
+
+    #[test]
+    fn label_size_keeps_setting_when_it_fits_and_never_goes_below_min() {
+        // 収まるなら設定のまま
+        let config = Config::default();
+        let nav = nav_of(&[MB, EXT_R]).with_subdivide(Subdivide::Half);
+        assert_eq!(scenes(&nav, &config)[0].label_size, 11.0);
+        // 6 文字 × 0.6 × 大きさ + 4 <= セル幅 - 4 の境目: 大きさ (63.625-8)/3.6
+        let mut edge = Config::default();
+        edge.style.label_size = (63.625 - 8.0) / 3.6;
+        assert!(approx(scenes(&nav, &edge)[0].label_size, edge.style.label_size));
+        // 細いセルでも min_label_size を下回らない（22.5 幅 × 5 文字は 4.83 になるところ）
+        let mut tiny = Config::default();
+        tiny.style.label_size = 20.0;
+        tiny.style.min_label_size = 8.0;
+        let quarter = nav_of(&[M]).with_subdivide(Subdivide::Quarter);
+        assert_eq!(scenes(&quarter, &tiny)[0].label_size, 8.0);
+        tiny.style.min_label_size = 9.5;
+        assert_eq!(scenes(&quarter, &tiny)[0].label_size, 9.5);
+    }
+
+    #[test]
+    fn small_screen_scene_has_no_labels() {
+        let config = Config::default();
+        let small = Rect::new(0.0, 0.0, 150.0, 80.0);
+        let scene = one(&nav_of(&[small]), &config);
+        assert!(scene.labels.is_empty());
+        assert_eq!(scene.label_size, config.style.label_size);
+        assert!(scene.dims.is_empty());
+    }
+
+    #[test]
+    fn cursor_monitor_scope_gives_one_scene_in_local_coordinates() {
+        let monitors = [mon(MB), mon(EXT_R)];
+        let nav = Nav::new(&monitors, Scope::CursorMonitor, Point::new(2000.0, 0.0), MAX_CELL);
+        let all = scenes(&nav, &Config::default());
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].monitor, 1);
+        assert_eq!(all[0].labels.len(), 256);
+        // 左上のセルの中心はモニターの左上から (2560/16/2, 1440/16/2)
+        assert!(point_approx(all[0].labels[0].origin, Point::new(80.0, 45.0)));
+    }
+
+    #[test]
+    fn inline_layout_after_typing_keeps_remaining_chars() {
+        let mut config = Config::default();
+        config.style.label_layout = LabelLayout::Inline;
+        let mut nav = nav_of(&[M]);
+        type_str(&mut nav, "ll");
+        let scene = one(&nav, &config);
+        assert_eq!(scene.labels.len(), 16);
+        assert!(scene.labels.iter().all(|l| l.anchor == Anchor::TopLeft && l.next));
+        // ll の範囲 (720,450,360,225) の先頭セルは (720,450,90,56.25)。残りは 2 文字
+        let first = &scene.labels[0];
+        assert_eq!(first.strong, 'j');
+        assert_eq!(first.rest, "j");
+        assert!(point_approx(first.origin, Point::new(722.0, 452.0)));
+    }
+
+    #[test]
+    fn corners_layout_uppercase_and_next_marks() {
+        let mut config = Config::default();
+        config.style.label_layout = LabelLayout::Corners;
+        config.style.uppercase = true;
+        let mut nav = nav_of(&[M]);
+        type_str(&mut nav, "llk");
+        let scene = one(&nav, &config);
+        // 残り 1 文字のセルが 4 つ。各セルの角は 1 つだけ
+        assert_eq!(scene.labels.len(), 4);
+        assert!(scene.labels.iter().all(|l| l.next && l.rest.is_empty()));
+        assert!(scene.labels.iter().all(|l| l.anchor == Anchor::BottomRight));
+        assert_eq!(
+            scene.labels.iter().map(|l| l.strong).collect::<String>(),
+            "JKL;"
+        );
+    }
+
+    #[test]
+    fn corners_layout_in_half_mode_uses_centered_labels() {
+        // 5文字と6文字のラベルは 4 隅に置けないので、中央に出す
+        let mut config = Config::default();
+        config.style.label_layout = LabelLayout::Corners;
+        let nav = nav_of(&[MB, EXT_R]).with_subdivide(Subdivide::Half);
+        let all = scenes(&nav, &config);
+        assert!(all.iter().flat_map(|s| &s.labels).all(|l| l.anchor == Anchor::Center));
+        assert!(all.iter().all(|s| !s.labels.is_empty()));
+    }
+
+    #[test]
+    fn faint_lines_stay_inside_each_monitor() {
+        let nav = nav_of(&[MB, EXT_R]);
+        let all = scenes(&nav, &Config::default());
+        let frames = [MB, EXT_R];
+        for (scene, frame) in all.iter().zip(frames) {
+            assert!(!scene.faint_lines.is_empty());
+            for l in &scene.faint_lines {
+                for p in [l.from, l.to] {
+                    assert!(p.x >= 0.0 && p.x <= frame.w + 1e-6, "{p:?}");
+                    assert!(p.y >= 0.0 && p.y <= frame.h + 1e-6, "{p:?}");
+                }
+                // 縦線は上端から下端まで、横線は左端から右端まで
+                if is_vertical(l) {
+                    assert!(approx(l.from.y, 0.0) && approx(l.to.y, frame.h));
+                } else {
+                    assert!(approx(l.from.x, 0.0) && approx(l.to.x, frame.w));
+                }
+            }
+        }
+        // 64 列 × 16 行のうち、MB の幅 1512 に入る縦線は 23 本（63.625 刻み）
+        let verticals = all[0].faint_lines.iter().filter(|l| is_vertical(l)).count();
+        assert_eq!(verticals, 23);
+    }
+
+    #[test]
+    fn strong_lines_are_clipped_per_monitor() {
+        // 起動直後: 外接矩形 (0,-458,4072,1440) を列に 4 等分する境界 x=1018,2036,3054
+        let all = scenes(&nav_of(&[MB, EXT_R]), &Config::default());
+        let in_mb: Vec<&Line> = all[0].strong_lines.iter().collect();
+        assert_eq!(in_mb.len(), 1);
+        assert!(approx(in_mb[0].from.x, 1018.0) && approx(in_mb[0].to.x, 1018.0));
+        // MB は y 0..982 だけ（キャンバスの上の 458 は MB の外）
+        assert!(approx(in_mb[0].from.y, 0.0) && approx(in_mb[0].to.y, 982.0));
+
+        let in_ext: Vec<&Line> = all[1].strong_lines.iter().collect();
+        assert_eq!(in_ext.len(), 2);
+        let mut xs: Vec<f64> = in_ext.iter().map(|l| l.from.x).collect();
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert!(approx(xs[0], 2036.0 - 1512.0) && approx(xs[1], 3054.0 - 1512.0));
+        assert!(in_ext.iter().all(|l| approx(l.from.y, 0.0) && approx(l.to.y, 1440.0)));
+    }
+
+    #[test]
+    fn dims_cover_the_monitor_minus_the_region() {
+        let config = Config::default();
+        for typed in ["", "l", "ll", "llk", "llk;"] {
+            let mut nav = nav_of(&[M]);
+            type_str(&mut nav, typed);
+            let scene = one(&nav, &config);
+            let dimmed: f64 = scene.dims.iter().map(|r| r.area()).sum();
+            assert!(approx(dimmed + nav.current().area(), M.area()), "{typed:?}");
+            // 暗くする矩形どうしは重ならない
+            for (i, a) in scene.dims.iter().enumerate() {
+                for b in &scene.dims[i + 1..] {
+                    assert!(crate::monitors::intersect(*a, *b).is_none(), "{typed:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dims_for_monitor_outside_the_region_cover_it_entirely() {
+        let config = Config::default();
+        let mut nav = nav_of(&[MB, EXT_R]);
+        type_str(&mut nav, "l");
+        let all = scenes(&nav, &config);
+        // l = x 2036..3054 は EXT_R の中だけ。MB は全体を暗くする
+        assert_eq!(all[0].dims.len(), 1);
+        assert!(rect_approx(all[0].dims[0], Rect::new(0.0, 0.0, 1512.0, 982.0)));
+        assert!(all[1].dims.len() > 1);
+    }
+
+    #[test]
+    fn edge_keys_are_placed_in_the_monitor_that_contains_them() {
+        let config = Config::default();
+        let mut nav = nav_of(&[MB, EXT_R]);
+        type_str(&mut nav, "kk;l;");
+        assert!(nav.is_determined());
+        let all = scenes(&nav, &config);
+        assert!(all[0].edge_keys.is_empty());
+        assert_eq!(all[1].edge_keys.len(), 8);
+        // 座標はモニターの左上が原点。セルの 7.5pt 外側（キーの大きさ 11 の半分 + 2）に出る
+        let region = nav.region().unwrap();
+        let next: Vec<&EdgeKey> = all[1].edge_keys.iter().filter(|k| k.next).collect();
+        assert_eq!(next.iter().map(|k| k.key).collect::<String>(), "jkl;");
+        // 葉は縦長 (63.625 x 90) なので、次に打つ 4 つは行 = セルの左に縦に並ぶ
+        for k in &next {
+            assert!(approx(k.center.x, region.x - 7.5 - EXT_R.x), "{k:?}");
+        }
+        for (i, k) in next.iter().enumerate() {
+            let want = region.y + region.h / 4.0 * (i as f64 + 0.5) - EXT_R.y;
+            assert!(approx(k.center.y, want), "{k:?}");
+        }
+        let after: Vec<&EdgeKey> = all[1].edge_keys.iter().filter(|k| !k.next).collect();
+        for k in &after {
+            assert!(approx(k.center.y, region.y - 7.5 - EXT_R.y), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn edge_key_size_changes_the_gap() {
+        let mut config = Config::default();
+        config.style.edge_key_size = 20.0;
+        let mut nav = nav_of(&[M]);
+        type_str(&mut nav, "llk;");
+        let scene = one(&nav, &config);
+        let above = scene.edge_keys.iter().find(|k| k.next).unwrap();
+        // Off の葉 (810,618.75,90,56.25) は横長なので、次に打つ 4 つは上に並ぶ。隙間は 20/2 + 2
+        assert!(approx(above.center.y, 618.75 - 12.0));
+    }
+
+    #[test]
+    fn no_edge_keys_until_determined() {
+        let mut nav = nav_of(&[M]);
+        for c in "llk".chars() {
+            assert!(nav.push(c));
+            assert!(one(&nav, &Config::default()).edge_keys.is_empty());
+        }
+    }
+
+    #[test]
+    fn merge_segments_joins_touching_and_overlapping_only() {
+        let merged = merge_segments(
+            vec![
+                (10.0, 50.0, 80.0),
+                (10.0, 0.0, 30.0),
+                (10.0, 30.0, 50.0), // つながる
+                (10.0, 90.0, 100.0), // 隙間があるので別
+                (20.0, 0.0, 100.0),  // 座標が違うので別
+                (10.0, 95.0, 120.0), // 重なる
+            ],
+            1e-6,
+        );
+        assert_eq!(
+            merged,
+            vec![(10.0, 0.0, 80.0), (10.0, 90.0, 120.0), (20.0, 0.0, 100.0)]
+        );
+        assert!(merge_segments(Vec::new(), 1e-6).is_empty());
+    }
+
+    #[test]
+    fn fit_label_size_zero_chars_keeps_setting() {
+        let style = Style::default();
+        assert_eq!(fit_label_size(&style, 10.0, 0), style.label_size);
+    }
 }

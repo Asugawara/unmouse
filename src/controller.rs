@@ -831,4 +831,344 @@ mod tests {
             other => panic!("unexpected effects: {other:?}"),
         }
     }
+
+    fn click(button: Button, count: u32, at: Point) -> Effect {
+        Effect::Mouse(MouseOp::Click { button, count }, at)
+    }
+
+    #[test]
+    fn new_rejects_invalid_key_config() {
+        let mut config = Config::default();
+        config.grid.keys = ["j", "j", "l", ";"].map(String::from).to_vec();
+        assert!(Controller::new(config).is_err());
+        let mut config = Config::default();
+        config.actions.drag = "j".to_string();
+        assert!(Controller::new(config).is_err());
+        let mut config = Config::default();
+        config.grid.keys.pop();
+        assert!(Controller::new(config).is_err());
+    }
+
+    #[test]
+    fn cancel_external_when_idle_does_nothing() {
+        let mut c = controller();
+        assert!(c.cancel_external().is_empty());
+        assert!(!c.is_active());
+    }
+
+    #[test]
+    fn idle_keys_other_than_the_trigger_are_not_consumed() {
+        let mut c = controller();
+        for code in [SPACE, ESC, H, BACKSPACE, SEMI, G] {
+            let result = key(&mut c, code);
+            assert!(!result.consume, "{code:#x}");
+            assert!(result.effects.is_empty());
+        }
+        // 修飾キーの組が違うホットキーは起動しない
+        let result = c.on_key_down(HOTKEY_KEY, Mods::CTRL, env);
+        assert!(!result.consume);
+        assert!(!c.is_active());
+        let result = c.on_key_down(HOTKEY_KEY, Mods::CTRL | Mods::ALT | Mods::SHIFT, env);
+        assert!(!result.consume);
+        assert!(!c.is_active());
+    }
+
+    #[test]
+    fn active_keys_ignore_modifiers() {
+        let mut c = started();
+        let result = c.on_key_down(L, Mods::SHIFT, env);
+        assert!(result.consume);
+        assert!(matches!(result.effects.as_slice(), [Effect::Update(_)]));
+        assert_eq!(c.session.as_ref().unwrap().nav.typed(), "l");
+        // ホットキーと同じキーでも、修飾キーの組が違えばラベルのキー
+        let result = c.on_key_down(HOTKEY_KEY, Mods::CMD, env);
+        assert!(matches!(result.effects.as_slice(), [Effect::Update(_)]));
+        assert_eq!(c.session.as_ref().unwrap().nav.typed(), "lj");
+    }
+
+    #[test]
+    fn rejected_label_key_is_consumed_without_effect() {
+        // 2台の画面で、どのモニターとも重ならない領域になる入力は拒否される
+        let mut c = Controller::new(Config {
+            hotkey: "ctrl+alt+j".to_string(),
+            ..Config::default()
+        })
+        .unwrap();
+        let two = || (vec![mon(MB), mon(EXT_R)], Point::new(0.0, 0.0));
+        c.on_key_down(HOTKEY_KEY, Mods::CTRL | Mods::ALT, two);
+        assert!(matches!(
+            c.on_key_down(J, Mods::NONE, two).effects.as_slice(),
+            [Effect::Update(_)]
+        ));
+        let result = c.on_key_down(J, Mods::NONE, two);
+        assert!(result.consume);
+        assert!(result.effects.is_empty());
+        assert_eq!(c.session.as_ref().unwrap().nav.typed(), "j");
+    }
+
+    #[test]
+    fn half_semicolon_after_semicolon_is_rejected_without_effect() {
+        let mut c = half_started(false);
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        let result = key(&mut c, SEMI);
+        assert!(result.consume);
+        assert!(result.effects.is_empty());
+        assert!(c.is_active());
+        // l は葉なので閉じて動かす
+        assert!(matches!(
+            key(&mut c, L).effects.as_slice(),
+            [Effect::Hide, Effect::MoveCursor { .. }]
+        ));
+    }
+
+    #[test]
+    fn can_start_again_after_a_click_with_fresh_input() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L]);
+        key(&mut c, SPACE);
+        assert!(!c.is_active());
+        let result = hotkey(&mut c);
+        assert!(matches!(result.effects.as_slice(), [Effect::Show(_)]));
+        assert_eq!(c.session.as_ref().unwrap().nav.typed(), "");
+        // 1つ入力して取り消し、もう一度起動しても最初から
+        key(&mut c, L);
+        key(&mut c, ESC);
+        hotkey(&mut c);
+        assert_eq!(c.session.as_ref().unwrap().nav.typed(), "");
+    }
+
+    #[test]
+    fn drag_at_start_without_input_does_nothing() {
+        let mut c = started();
+        let result = key(&mut c, G);
+        assert!(result.consume);
+        assert!(result.effects.is_empty());
+        // ドラッグは始まっていないので、続けて入力して普通にクリックできる
+        type_keys(&mut c, &[L, L]);
+        assert!(key(&mut c, SPACE).effects.contains(&click(
+            Button::Left,
+            1,
+            Point::new(900.0, 562.5)
+        )));
+    }
+
+    #[test]
+    fn other_actions_are_ignored_while_dragging() {
+        for code in [D, S, A, F] {
+            let mut c = started();
+            type_keys(&mut c, &[L, L, K, SEMI]);
+            key(&mut c, G);
+            let result = key(&mut c, code);
+            assert!(result.consume, "{code:#x}");
+            assert!(result.effects.is_empty(), "{code:#x}");
+            assert!(c.is_active(), "{code:#x}");
+            // まだドラッグ中なので、あとで離せる
+            let end = key(&mut c, SPACE);
+            assert!(end.effects.contains(&Effect::Mouse(
+                MouseOp::Up(Button::Left),
+                Point::new(855.0, 646.875)
+            )));
+        }
+    }
+
+    #[test]
+    fn drag_key_releases_at_the_typed_target() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        key(&mut c, G);
+        type_keys(&mut c, &[J, J]);
+        // jj の範囲 (0,0,360,225) → 中心 (180,112.5)
+        let end = Point::new(180.0, 112.5);
+        assert_eq!(
+            key(&mut c, G).effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: end,
+                    dragging: true
+                },
+                Effect::Mouse(MouseOp::Up(Button::Left), end),
+            ]
+        );
+        assert!(!c.is_active());
+    }
+
+    #[test]
+    fn trigger_while_dragging_releases_button() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        key(&mut c, G);
+        assert_eq!(
+            hotkey(&mut c).effects,
+            vec![
+                Effect::Hide,
+                Effect::Mouse(MouseOp::Up(Button::Left), Point::new(855.0, 646.875)),
+            ]
+        );
+        assert!(!c.is_active());
+    }
+
+    #[test]
+    fn back_while_dragging_edits_the_new_input() {
+        let mut c = started();
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        key(&mut c, G);
+        type_keys(&mut c, &[J, K]);
+        key(&mut c, H);
+        assert_eq!(c.session.as_ref().unwrap().nav.typed(), "j");
+        key(&mut c, BACKSPACE);
+        let result = key(&mut c, H);
+        assert!(result.effects.is_empty(), "入力が空なら戻る先がない");
+        assert!(c.is_active());
+    }
+
+    #[test]
+    fn drag_without_refine_keeps_going_on_partial_input() {
+        let mut c = started_no_refine();
+        type_keys(&mut c, &[L, L, K]);
+        key(&mut c, G);
+        // 途中の入力では離さない
+        let result = key(&mut c, K);
+        assert!(matches!(result.effects.as_slice(), [Effect::Update(_)]));
+        assert!(c.is_active());
+    }
+
+    #[test]
+    fn half_drag_releases_on_a_five_char_leaf() {
+        let mut c = half_started(false);
+        type_keys(&mut c, &[L, L, K, SEMI]);
+        key(&mut c, G);
+        type_keys(&mut c, &[J, J, J, L]);
+        assert!(c.is_active());
+        // jjjl は 3 セルの段。5 文字目 j が葉 (0,56.25,45,56.25) の中心
+        let result = key(&mut c, J);
+        let end = Point::new(22.5, 84.375);
+        assert_eq!(
+            result.effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: end,
+                    dragging: true
+                },
+                Effect::Mouse(MouseOp::Up(Button::Left), end),
+            ]
+        );
+    }
+
+    #[test]
+    fn all_click_actions_work_with_partial_input_without_refine() {
+        let at = Point::new(855.0, 562.5);
+        for (code, want) in [
+            (SPACE, click(Button::Left, 1, at)),
+            (D, click(Button::Right, 1, at)),
+            (S, click(Button::Left, 2, at)),
+            (A, click(Button::Middle, 1, at)),
+        ] {
+            let mut c = started_no_refine();
+            type_keys(&mut c, &[L, L, K]);
+            assert_eq!(key(&mut c, code).effects, vec![Effect::Hide, want], "{code:#x}");
+            assert!(!c.is_active());
+        }
+        let mut c = started_no_refine();
+        type_keys(&mut c, &[L, L, K]);
+        assert_eq!(
+            key(&mut c, F).effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: at,
+                    dragging: false
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn actions_at_start_do_nothing_for_every_action() {
+        for code in [SPACE, D, S, A, F, G] {
+            let mut c = started();
+            let result = key(&mut c, code);
+            assert!(result.consume, "{code:#x}");
+            assert!(result.effects.is_empty(), "{code:#x}");
+            assert!(c.is_active());
+        }
+    }
+
+    #[test]
+    fn custom_keys_and_actions_drive_the_controller() {
+        let config = Config::from_toml(
+            "hotkey = \"ctrl+alt+j\"\n[grid]\nkeys = [\"u\", \"i\", \"o\", \"p\"]\nsubdivide = \"off\"\n[actions]\nleft_click = \"return\"",
+        )
+        .unwrap();
+        let mut c = Controller::new(config).unwrap();
+        hotkey(&mut c);
+        // o o = 既定の l l
+        type_keys(&mut c, &[0x1F, 0x1F]);
+        // 既定のラベルキーはもう効かない
+        let result = key(&mut c, L);
+        assert!(result.consume);
+        assert!(result.effects.is_empty());
+        assert_eq!(c.session.as_ref().unwrap().nav.typed(), "oo");
+        assert_eq!(
+            key(&mut c, 0x24).effects,
+            vec![Effect::Hide, click(Button::Left, 1, Point::new(900.0, 562.5))]
+        );
+    }
+
+    #[test]
+    fn cursor_monitor_scope_shows_only_the_cursor_monitor() {
+        let mut config = Config::default();
+        config.grid.scope = crate::monitors::Scope::CursorMonitor;
+        let mut c = Controller::new(config).unwrap();
+        let effects = c.activate(|| (vec![mon(MB), mon(EXT_R)], Point::new(2000.0, 0.0)));
+        match effects.as_slice() {
+            [Effect::Show(scenes)] => {
+                assert_eq!(scenes.len(), 1);
+                assert_eq!(scenes[0].monitor, 1);
+            }
+            other => panic!("unexpected effects: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn boundary_cell_targets_the_monitor_with_the_largest_overlap() {
+        // 2台の境目をまたぐセル（列23・行5、x 1463.375〜1527）は MB の側が大きい。
+        // 目標はその重なり (1463.375,0,48.625,82) の中心 (1487.6875,41)
+        let mut config = Config {
+            hotkey: "ctrl+alt+j".to_string(),
+            ..Config::default()
+        };
+        config.grid.subdivide = Subdivide::Off;
+        let mut c = Controller::new(config).unwrap();
+        let two = || (vec![mon(MB), mon(EXT_R)], Point::new(0.0, 0.0));
+        c.on_key_down(HOTKEY_KEY, Mods::CTRL | Mods::ALT, two);
+        let label = c
+            .session
+            .as_ref()
+            .unwrap()
+            .nav
+            .path_to(Point::new(1470.0, 40.0))
+            .unwrap();
+        assert_eq!(label.chars().count(), 5);
+        let codes: Vec<u16> = label
+            .chars()
+            .map(|ch| crate::keys::char_keycode(ch).unwrap())
+            .collect();
+        for &code in &codes[..4] {
+            c.on_key_down(code, Mods::NONE, two);
+        }
+        assert!(c.is_active());
+        let result = c.on_key_down(codes[4], Mods::NONE, two);
+        assert_eq!(
+            result.effects,
+            vec![
+                Effect::Hide,
+                Effect::MoveCursor {
+                    to: Point::new(1487.6875, 41.0),
+                    dragging: false
+                },
+            ]
+        );
+    }
 }

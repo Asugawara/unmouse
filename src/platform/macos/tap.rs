@@ -226,3 +226,40 @@ pub fn can_create() -> bool {
     }
     .is_some()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mods_from_flags_maps_each_modifier() {
+        assert_eq!(mods_from_flags(CGEventFlags(0)), Mods::NONE);
+        assert_eq!(mods_from_flags(CGEventFlags::MaskControl), Mods::CTRL);
+        assert_eq!(mods_from_flags(CGEventFlags::MaskAlternate), Mods::ALT);
+        assert_eq!(mods_from_flags(CGEventFlags::MaskShift), Mods::SHIFT);
+        assert_eq!(mods_from_flags(CGEventFlags::MaskCommand), Mods::CMD);
+    }
+
+    #[test]
+    fn mods_from_flags_combines_and_ignores_other_bits() {
+        let ctrl_alt = CGEventFlags(CGEventFlags::MaskControl.0 | CGEventFlags::MaskAlternate.0);
+        assert_eq!(mods_from_flags(ctrl_alt), Mods::CTRL | Mods::ALT);
+        let all = CGEventFlags(
+            CGEventFlags::MaskControl.0
+                | CGEventFlags::MaskAlternate.0
+                | CGEventFlags::MaskShift.0
+                | CGEventFlags::MaskCommand.0,
+        );
+        assert_eq!(
+            mods_from_flags(all),
+            Mods::CTRL | Mods::ALT | Mods::SHIFT | Mods::CMD
+        );
+        // CapsLock・NumericPad・左右別のビットは修飾キーの組に入らない
+        let noise = CGEventFlags(
+            CGEventFlags::MaskAlphaShift.0 | CGEventFlags::MaskNumericPad.0 | 0x10,
+        );
+        assert_eq!(mods_from_flags(noise), Mods::NONE);
+        let cmd_with_side = CGEventFlags(CGEventFlags::MaskCommand.0 | 0x10);
+        assert_eq!(mods_from_flags(cmd_with_side), Mods::CMD);
+    }
+}

@@ -111,4 +111,63 @@ mod tests {
         ));
         assert!(intersect(a, Rect::new(10.0, 0.0, 5.0, 5.0)).is_none());
     }
+
+    #[test]
+    fn intersect_disjoint_corner_and_contained() {
+        let a = Rect::new(0.0, 0.0, 10.0, 10.0);
+        // 離れている
+        assert!(intersect(a, Rect::new(20.0, 20.0, 5.0, 5.0)).is_none());
+        // 角だけ接する、下辺だけ接する
+        assert!(intersect(a, Rect::new(10.0, 10.0, 5.0, 5.0)).is_none());
+        assert!(intersect(a, Rect::new(0.0, 10.0, 10.0, 5.0)).is_none());
+        // 完全に含まれる（順序を入れ替えても同じ）
+        let inner = Rect::new(2.0, 3.0, 4.0, 5.0);
+        assert!(rect_approx(intersect(a, inner).unwrap(), inner));
+        assert!(rect_approx(intersect(inner, a).unwrap(), inner));
+        // EXT_TOP は MB の真上で接するだけ
+        assert!(intersect(EXT_TOP, MB).is_none());
+    }
+
+    #[test]
+    fn bounding_empty_single_and_negative() {
+        assert!(rect_approx(bounding([]), Rect::new(0.0, 0.0, 0.0, 0.0)));
+        assert!(rect_approx(bounding([EXT_R]), EXT_R));
+        assert!(rect_approx(
+            bounding([MB, EXT_R, C3]),
+            Rect::new(0.0, -458.0, 6632.0, 1440.0)
+        ));
+    }
+
+    #[test]
+    fn active_indices_by_scope() {
+        let ms = [mon(MB), mon(EXT_R)];
+        let origin = Point::new(0.0, 0.0);
+        assert_eq!(active_indices(&ms, Scope::AllMonitors, origin), vec![0, 1]);
+        assert_eq!(active_indices(&ms, Scope::CursorMonitor, origin), vec![0]);
+        assert_eq!(
+            active_indices(&ms, Scope::CursorMonitor, Point::new(2000.0, 0.0)),
+            vec![1]
+        );
+        // 境目の x=1512 は右のモニターに属する（半開区間）
+        assert_eq!(
+            active_indices(&ms, Scope::CursorMonitor, Point::new(1512.0, 0.0)),
+            vec![1]
+        );
+        // どのモニターにもなければ先頭
+        assert_eq!(
+            active_indices(&ms, Scope::CursorMonitor, Point::new(-5000.0, 0.0)),
+            vec![0]
+        );
+    }
+
+    #[test]
+    fn no_monitors_gives_empty_canvas() {
+        let origin = Point::new(0.0, 0.0);
+        assert!(active_indices(&[], Scope::AllMonitors, origin).is_empty());
+        assert!(active_indices(&[], Scope::CursorMonitor, origin).is_empty());
+        assert!(rect_approx(
+            canvas(&[], Scope::CursorMonitor, origin),
+            Rect::new(0.0, 0.0, 0.0, 0.0)
+        ));
+    }
 }

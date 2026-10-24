@@ -344,4 +344,82 @@ mod tests {
         assert!(!Modifier::LeftCmd.is_down(flags));
         assert!(!Modifier::RightCmd.is_down(0));
     }
+
+    #[test]
+    fn each_side_bit_belongs_to_one_modifier() {
+        for m in Modifier::ALL {
+            for other in Modifier::ALL {
+                assert_eq!(
+                    other.is_down(m.device_mask()),
+                    other == m,
+                    "{} の flags を {} が拾っている",
+                    m.name(),
+                    other.name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn press_while_already_down_is_ignored() {
+        let mut d = detector();
+        assert!(!d.on_modifier(RIGHT_CMD, true, 0));
+        assert!(!d.on_modifier(RIGHT_CMD, true, 10));
+        assert!(!d.on_modifier(RIGHT_CMD, false, 50));
+        assert!(tap(&mut d, RIGHT_CMD, 100, 150));
+    }
+
+    #[test]
+    fn press_and_gap_limits_are_inclusive_of_double_tap_ms() {
+        // 押している長さがちょうど上限ならタップ、超えたらタップではない
+        let mut d = DoubleTapDetector::new(Modifier::RightCmd, 200);
+        assert!(!tap(&mut d, RIGHT_CMD, 0, 200));
+        assert!(tap(&mut d, RIGHT_CMD, 300, 500));
+
+        let mut d = DoubleTapDetector::new(Modifier::RightCmd, 200);
+        assert!(!tap(&mut d, RIGHT_CMD, 0, 201));
+        assert!(!tap(&mut d, RIGHT_CMD, 300, 400));
+
+        // 離してから次に押すまでの間隔が上限+1なら数え直し
+        let mut d = DoubleTapDetector::new(Modifier::RightCmd, 200);
+        assert!(!tap(&mut d, RIGHT_CMD, 0, 50));
+        assert!(!tap(&mut d, RIGHT_CMD, 251, 300));
+        // その2回目が新しい1回目になるので、続けてもう1回で発火する
+        assert!(tap(&mut d, RIGHT_CMD, 350, 400));
+    }
+
+    #[test]
+    fn works_for_any_modifier_and_uses_its_keycode() {
+        for m in Modifier::ALL {
+            let mut d = DoubleTapDetector::new(m, 300);
+            assert!(!tap(&mut d, m.keycode(), 0, 50), "{}", m.name());
+            assert!(tap(&mut d, m.keycode(), 100, 150), "{}", m.name());
+        }
+    }
+
+    #[test]
+    fn other_key_while_pressed_discards_the_press() {
+        // 押している最中にキーが来たら、その押下は数えない
+        let mut d = detector();
+        assert!(!d.on_modifier(RIGHT_CMD, true, 0));
+        d.on_other_key();
+        assert!(!d.on_modifier(RIGHT_CMD, false, 50));
+        assert!(!tap(&mut d, RIGHT_CMD, 100, 150));
+    }
+
+    #[test]
+    fn parse_trigger_trims_and_ignores_case_of_modifier_name() {
+        assert_eq!(
+            Trigger::parse("  double:LEFT_OPTION ").unwrap(),
+            Trigger::DoubleTap(Modifier::LeftOption)
+        );
+        assert!(Trigger::parse("double:").is_err());
+        assert!(Trigger::parse("").is_err());
+        for m in Modifier::ALL {
+            assert_eq!(
+                Trigger::parse(&format!("double:{}", m.name())).unwrap(),
+                Trigger::DoubleTap(m)
+            );
+        }
+    }
 }

@@ -88,3 +88,25 @@ fn kinds(button: Button) -> (CGEventType, CGEventType, CGMouseButton) {
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kinds_pair_down_and_up_of_the_same_button() {
+        assert_eq!(
+            kinds(Button::Left),
+            (CGEventType::LeftMouseDown, CGEventType::LeftMouseUp, CGMouseButton::Left)
+        );
+        assert_eq!(
+            kinds(Button::Right),
+            (CGEventType::RightMouseDown, CGEventType::RightMouseUp, CGMouseButton::Right)
+        );
+        // 中ボタンは OtherMouse で、ボタン番号は Center
+        assert_eq!(
+            kinds(Button::Middle),
+            (CGEventType::OtherMouseDown, CGEventType::OtherMouseUp, CGMouseButton::Center)
+        );
+    }
+}

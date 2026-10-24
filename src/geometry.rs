@@ -180,4 +180,71 @@ mod tests {
         assert!(!M.contains(Point::new(1440.0, 0.0)));
         assert!(!M.contains(Point::new(-1.0, 0.0)));
     }
+
+    #[test]
+    fn contains_excludes_bottom_edge_and_offset_origin() {
+        let r = Rect::new(-300.0, -1440.0, 2560.0, 1440.0);
+        assert!(r.contains(Point::new(-300.0, -1440.0)));
+        assert!(r.contains(Point::new(2259.9, -0.1)));
+        assert!(!r.contains(Point::new(0.0, 0.0)), "下端は外");
+        assert!(!r.contains(Point::new(2260.0, -10.0)), "右端は外");
+        assert!(!r.contains(Point::new(-300.1, -10.0)));
+        assert!(!r.contains(Point::new(0.0, -1440.1)));
+    }
+
+    #[test]
+    fn edges_area_and_center() {
+        let r = Rect::new(10.0, 20.0, 100.0, 40.0);
+        assert!(approx(r.right(), 110.0));
+        assert!(approx(r.bottom(), 60.0));
+        assert!(approx(r.area(), 4000.0));
+        assert!(point_approx(r.center(), Point::new(60.0, 40.0)));
+        let neg = Rect::new(-300.0, -1440.0, 2560.0, 1440.0);
+        assert!(point_approx(neg.center(), Point::new(980.0, -720.0)));
+    }
+
+    #[test]
+    fn axis_other_flips() {
+        assert_eq!(Axis::Cols.other(), Axis::Rows);
+        assert_eq!(Axis::Rows.other(), Axis::Cols);
+    }
+
+    #[test]
+    fn split4_tiles_an_offset_rect_without_gaps() {
+        let r = Rect::new(-300.0, -1440.0, 2560.0, 1440.0);
+        for axis in [Axis::Cols, Axis::Rows] {
+            let parts = r.split4(axis);
+            let total: f64 = parts.iter().map(|p| p.area()).sum();
+            assert!(approx(total, r.area()));
+            assert!(approx(parts[0].x, r.x) && approx(parts[0].y, r.y));
+            for w in parts.windows(2) {
+                match axis {
+                    Axis::Cols => assert!(approx(w[0].right(), w[1].x)),
+                    Axis::Rows => assert!(approx(w[0].bottom(), w[1].y)),
+                }
+            }
+            let last = parts[3];
+            assert!(approx(last.right(), r.right()) && approx(last.bottom(), r.bottom()));
+        }
+    }
+
+    #[test]
+    fn piece_index_clamps_outside_and_uses_offset_origin() {
+        let r = Rect::new(100.0, 200.0, 400.0, 200.0);
+        // 範囲の外は端の番号に寄せる
+        assert_eq!(r.piece_index(Axis::Cols, Point::new(-1000.0, 0.0)), 0);
+        assert_eq!(r.piece_index(Axis::Cols, Point::new(9999.0, 0.0)), 3);
+        assert_eq!(r.piece_index(Axis::Rows, Point::new(0.0, 0.0)), 0);
+        assert_eq!(r.piece_index(Axis::Rows, Point::new(0.0, 9999.0)), 3);
+        // 原点がずれていても、境目は split4 と同じ
+        assert_eq!(r.piece_index(Axis::Cols, Point::new(199.9, 0.0)), 0);
+        assert_eq!(r.piece_index(Axis::Cols, Point::new(200.0, 0.0)), 1);
+        assert_eq!(r.piece_index(Axis::Rows, Point::new(0.0, 249.9)), 0);
+        assert_eq!(r.piece_index(Axis::Rows, Point::new(0.0, 250.0)), 1);
+        for axis in [Axis::Cols, Axis::Rows] {
+            for (i, piece) in r.split4(axis).iter().enumerate() {
+                assert_eq!(r.piece_index(axis, piece.center()), i);
+            }
+        }
+    }
 }
