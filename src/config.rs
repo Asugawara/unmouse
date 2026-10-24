@@ -80,6 +80,8 @@ pub struct Style {
     pub edge_key_size: f64,
     pub label_layout: LabelLayout,
     pub label_bg_opacity: f64,
+    /// ラベルの背景の右端の不透明度。先頭の文字までは label_bg_opacity で、そこから右端へ向けて変わる。
+    pub label_bg_end_opacity: f64,
     pub rest_opacity: f64,
     pub uppercase: bool,
 }
@@ -136,6 +138,7 @@ impl Default for Style {
             edge_key_size: 10.0,
             label_layout: LabelLayout::Center,
             label_bg_opacity: 0.72,
+            label_bg_end_opacity: 0.25,
             rest_opacity: 0.42,
             uppercase: false,
         }
@@ -232,6 +235,7 @@ impl Config {
         );
         check_range("style.dim_opacity", style.dim_opacity, 0.0, 1.0)?;
         check_range("style.label_bg_opacity", style.label_bg_opacity, 0.0, 1.0)?;
+        check_range("style.label_bg_end_opacity", style.label_bg_end_opacity, 0.0, 1.0)?;
         check_range("style.rest_opacity", style.rest_opacity, 0.0, 1.0)?;
 
         ensure!(
@@ -479,12 +483,19 @@ mod tests {
 
     #[test]
     fn opacity_ranges_are_zero_to_one_inclusive() {
-        for name in ["dim_opacity", "label_bg_opacity", "rest_opacity"] {
+        for name in ["dim_opacity", "label_bg_opacity", "label_bg_end_opacity", "rest_opacity"] {
             assert!(Config::from_toml(&format!("[style]\n{name} = 0.0")).is_ok(), "{name}");
             assert!(Config::from_toml(&format!("[style]\n{name} = 1.0")).is_ok(), "{name}");
             assert!(Config::from_toml(&format!("[style]\n{name} = -0.1")).is_err(), "{name}");
             assert!(Config::from_toml(&format!("[style]\n{name} = 1.1")).is_err(), "{name}");
         }
+    }
+
+    #[test]
+    fn label_bg_end_opacity_default() {
+        assert_eq!(Config::default().style.label_bg_end_opacity, 0.25);
+        let c = Config::from_toml("[style]\nlabel_bg_end_opacity = 0.72").unwrap();
+        assert_eq!(c.style.label_bg_end_opacity, 0.72);
     }
 
     #[test]

@@ -8,9 +8,11 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{AllocAnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
-    NSAttributedStringNSStringDrawing, NSBackingStoreType, NSBezierPath, NSColor, NSFont,
-    NSFontAttributeName, NSFontWeightBold, NSFontWeightRegular, NSForegroundColorAttributeName,
-    NSPanel, NSScreenSaverWindowLevel, NSView, NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSAttributedStringNSExtendedStringDrawing, NSAttributedStringNSStringDrawing,
+    NSBackingStoreType, NSBezierPath, NSColor, NSFont, NSFontAttributeName, NSFontWeightBold,
+    NSFontWeightRegular, NSForegroundColorAttributeName, NSGradient, NSGradientDrawingOptions,
+    NSGraphicsContext, NSPanel, NSScreenSaverWindowLevel, NSStringDrawingOptions, NSView,
+    NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{
     NSAttributedString, NSDictionary, NSMutableDictionary, NSPoint, NSRect, NSSize, NSString,
@@ -224,6 +226,29 @@ fn key_color(config: &Config, c: char) -> Option<Retained<NSColor>> {
         .map(|(r, g, b)| rgba(r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0, 1.0))
 }
 
+/// `text` を `font` で描いたときのインクの上端（ベースラインより上）と下端（ベースラインより下）。
+fn ink_extent(text: &str, font: &NSFont) -> (f64, f64) {
+    let r = attributed(text, font, &rgba(0.0, 0.0, 0.0, 1.0)).boundingRectWithSize_options_context(
+        NSSize::new(1e4, 1e4),
+        NSStringDrawingOptions::UsesDeviceMetrics,
+        None,
+    );
+    (r.origin.y + r.size.height, (-r.origin.y).max(0.0))
+}
+
+fn max_extent(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    (a.0.max(b.0), a.1.max(b.1))
+}
+
+/// `baseline` をベースラインにして描く（UsesLineFragmentOrigin なしの drawWithRect は rect の原点がベースライン）。
+fn draw_on_baseline(text: &NSAttributedString, x: f64, baseline: f64, width: f64) {
+    text.drawWithRect_options_context(
+        NSRect::new(NSPoint::new(x, baseline), NSSize::new(width, 0.0)),
+        NSStringDrawingOptions::empty(),
+        None,
+    );
+}
+
 fn draw(scene: &Scene, config: &Config) {
     let style = &config.style;
     let (ar, ag, ab) = config.accent_rgb().unwrap_or((0x1d, 0x4e, 0xd8));
@@ -256,7 +281,23 @@ fn draw(scene: &Scene, config: &Config) {
     let ink = rgba(0.0, 0.0, 0.0, 1.0);
     let rest_color = rgba(0.0, 0.0, 0.0, style.rest_opacity);
     let bg = rgba(1.0, 1.0, 1.0, style.label_bg_opacity);
+    // 先頭の文字までは label_bg_opacity、そこから右端の label_bg_end_opacity へ変える。同じ値なら一様に塗る
+    let fade = if style.label_bg_end_opacity == style.label_bg_opacity {
+        None
+    } else {
+        NSGradient::initWithStartingColor_endingColor(
+            NSGradient::alloc(),
+            &bg,
+            &rgba(1.0, 1.0, 1.0, style.label_bg_end_opacity),
+        )
+    };
     let pad = 1.5;
+    // 背景の上下はキーの文字のインクに合わせる（どのラベルも同じ高さ）
+    let keys = config.grid.keys.concat();
+    let keys = if style.uppercase { keys.to_ascii_uppercase() } else { keys };
+    let rest_ink = ink_extent(&keys, &rest_font);
+    let next_ink = max_extent(ink_extent(&keys, &next_font), rest_ink);
+    let strong_ink = max_extent(ink_extent(&keys, &strong_font), rest_ink);
 
     for label in &scene.labels {
         let next_color = key_color(config, label.strong).unwrap_or_else(|| strong_color.clone());
@@ -266,14 +307,11 @@ fn draw(scene: &Scene, config: &Config) {
             first_font,
             if label.next { &next_color } else { &ink },
         );
-        let first_size = first.size();
+        let first_w = first.size().width;
         let rest = (!label.rest.is_empty()).then(|| attributed(&label.rest, &rest_font, &rest_color));
         let rest_w = rest.as_ref().map_or(0.0, |r| r.size().width);
-        // 大きい文字と小さい文字のベースラインをそろえる（ascender の差だけ rest を下げる）
-        let rest_dy = first_font.ascender() - rest_font.ascender();
-        let rest_h = rest.as_ref().map_or(0.0, |r| r.size().height);
-        let body_h = first_size.height.max(rest_h);
-        let (w, h) = (first_size.width + rest_w + pad * 2.0, body_h + pad * 2.0);
+        let (ink_top, ink_bottom) = if label.next { next_ink } else { strong_ink };
+        let (w, h) = (first_w + rest_w + pad * 2.0, ink_top + ink_bottom + pad * 2.0);
         let (x, y) = match label.anchor {
             Anchor::TopLeft => (label.origin.x, label.origin.y),
             Anchor::TopRight => (label.origin.x - w, label.origin.y),
@@ -281,11 +319,28 @@ fn draw(scene: &Scene, config: &Config) {
             Anchor::BottomRight => (label.origin.x - w, label.origin.y - h),
             Anchor::Center => (label.origin.x - w / 2.0, label.origin.y - h / 2.0),
         };
-        bg.setFill();
-        NSBezierPath::fillRect(NSRect::new(NSPoint::new(x, y), NSSize::new(w, h)));
-        first.drawAtPoint(NSPoint::new(x + pad, y + pad));
+        let rect = NSRect::new(NSPoint::new(x, y), NSSize::new(w, h));
+        match (&fade, &rest) {
+            (Some(fade), Some(_)) => {
+                NSGraphicsContext::saveGraphicsState_class();
+                NSBezierPath::clipRect(rect);
+                fade.drawFromPoint_toPoint_options(
+                    NSPoint::new(x + pad + first_w, y),
+                    NSPoint::new(x + w, y),
+                    NSGradientDrawingOptions::DrawsBeforeStartingLocation,
+                );
+                NSGraphicsContext::restoreGraphicsState_class();
+            }
+            _ => {
+                bg.setFill();
+                NSBezierPath::fillRect(rect);
+            }
+        }
+        // 大きい文字と小さい文字のベースラインをそろえる
+        let baseline = y + pad + ink_top;
+        draw_on_baseline(&first, x + pad, baseline, first_w);
         if let Some(rest) = rest {
-            rest.drawAtPoint(NSPoint::new(x + pad + first_size.width, y + pad + rest_dy));
+            draw_on_baseline(&rest, x + pad + first_w, baseline, rest_w);
         }
     }
 
