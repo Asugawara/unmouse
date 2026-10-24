@@ -89,12 +89,13 @@ pub fn scenes(nav: &Nav, config: &Config) -> Vec<Scene> {
         .collect()
 }
 
-/// 文字幅の見積もり（文字数 × 0.6 × 大きさ + 4）がセルの幅に収まるように、必要なら縮める。
+/// 文字幅の見積もり（(文字数 − 1 + next_scale) × 0.6 × 大きさ + 4）がセルの幅に収まるように、必要なら縮める。
+/// 次に打つ1文字だけ `next_scale` 倍になるので、その分を足している。
 fn fit_label_size(style: &Style, cell_w: f64, chars: usize) -> f64 {
     if chars == 0 {
         return style.label_size;
     }
-    let per_char = 0.6 * chars as f64;
+    let per_char = 0.6 * (chars as f64 - 1.0 + style.next_scale);
     if per_char * style.label_size + 4.0 <= cell_w - 4.0 {
         style.label_size
     } else {
@@ -385,12 +386,26 @@ mod tests {
     #[test]
     fn label_size_fits_cell() {
         let mut config = Config::default();
+        config.style.next_scale = 1.0;
         config.style.label_size = 14.0;
         assert_eq!(one(&nav_of(&[M]), &config).label_size, 14.0);
 
         config.style.label_size = 40.0;
         let shrunk = one(&nav_of(&[M]), &config).label_size;
         assert!(approx(shrunk, 82.0 / 2.4));
+    }
+
+    #[test]
+    fn label_size_fits_cell_with_next_scale() {
+        let mut config = Config::default();
+        assert_eq!(config.style.next_scale, 1.5);
+        config.style.label_size = 14.0;
+        assert_eq!(one(&nav_of(&[M]), &config).label_size, 14.0);
+
+        // 4 文字（うち次の1文字は 1.5 倍）: (90 - 8) / (0.6 * 4.5) ≈ 30.37 に縮む
+        config.style.label_size = 40.0;
+        let shrunk = one(&nav_of(&[M]), &config).label_size;
+        assert!(approx(shrunk, 82.0 / 2.7));
     }
 
     #[test]
@@ -571,6 +586,7 @@ mod tests {
     fn label_size_uses_the_longest_label() {
         // 2台の half は 5 文字と 6 文字。セルの幅は 63.625、6 文字で見積もる
         let mut config = Config::default();
+        config.style.next_scale = 1.0;
         config.style.label_size = 40.0;
         let nav = nav_of(&[MB, EXT_R]).with_subdivide(Subdivide::Half);
         let size = scenes(&nav, &config)[0].label_size;
@@ -589,6 +605,7 @@ mod tests {
         assert_eq!(scenes(&nav, &config)[0].label_size, 11.0);
         // 6 文字 × 0.6 × 大きさ + 4 <= セル幅 - 4 の境目: 大きさ (63.625-8)/3.6
         let mut edge = Config::default();
+        edge.style.next_scale = 1.0;
         edge.style.label_size = (63.625 - 8.0) / 3.6;
         assert!(approx(scenes(&nav, &edge)[0].label_size, edge.style.label_size));
         // 細いセルでも min_label_size を下回らない（22.5 幅 × 5 文字は 4.83 になるところ）

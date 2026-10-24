@@ -74,6 +74,8 @@ pub struct Style {
     pub dim_opacity: f64,
     pub font: String,
     pub label_size: f64,
+    /// 次に打つ文字（`label.next`）の大きさの倍率。1.0〜3.0。
+    pub next_scale: f64,
     pub min_label_size: f64,
     pub edge_key_size: f64,
     pub label_layout: LabelLayout,
@@ -129,6 +131,7 @@ impl Default for Style {
             dim_opacity: 0.30,
             font: String::new(),
             label_size: 11.0,
+            next_scale: 1.5,
             min_label_size: 8.0,
             edge_key_size: 11.0,
             label_layout: LabelLayout::Center,
@@ -222,6 +225,7 @@ impl Config {
         check_range("style.label_size", style.label_size, 6.0, 48.0)?;
         check_range("style.edge_key_size", style.edge_key_size, 6.0, 48.0)?;
         check_range("style.min_label_size", style.min_label_size, 6.0, 48.0)?;
+        check_range("style.next_scale", style.next_scale, 1.0, 3.0)?;
         ensure!(
             style.min_label_size <= style.label_size,
             "style.min_label_size は style.label_size 以下にしてください"
@@ -376,6 +380,15 @@ mod tests {
         // min_label_size（既定 8）が label_size（7）より大きい
         assert!(Config::from_toml("[style]\nlabel_size = 7").is_err());
         assert!(Config::from_toml("[style]\nlabel_size = 9").is_ok());
+    }
+
+    #[test]
+    fn next_scale_default_and_range() {
+        assert_eq!(Config::default().style.next_scale, 1.5);
+        assert!(Config::from_toml("[style]\nnext_scale = 0.9").is_err());
+        assert!(Config::from_toml("[style]\nnext_scale = 3.1").is_err());
+        assert!(Config::from_toml("[style]\nnext_scale = 1.0").is_ok());
+        assert!(Config::from_toml("[style]\nnext_scale = 3.0").is_ok());
     }
 
     #[test]

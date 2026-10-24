@@ -251,6 +251,7 @@ fn draw(scene: &Scene, config: &Config) {
 
     let strong_font = font(&style.font, scene.label_size, true);
     let rest_font = font(&style.font, scene.label_size, false);
+    let next_font = font(&style.font, scene.label_size * style.next_scale, true);
     let strong_color = rgba(ar * 0.6, ag * 0.6, ab * 0.9, 1.0);
     let ink = rgba(0.0, 0.0, 0.0, 1.0);
     let rest_color = rgba(0.0, 0.0, 0.0, style.rest_opacity);
@@ -259,15 +260,20 @@ fn draw(scene: &Scene, config: &Config) {
 
     for label in &scene.labels {
         let next_color = key_color(config, label.strong).unwrap_or_else(|| strong_color.clone());
+        let first_font = if label.next { &next_font } else { &strong_font };
         let first = attributed(
             &label.strong.to_string(),
-            &strong_font,
+            first_font,
             if label.next { &next_color } else { &ink },
         );
         let first_size = first.size();
         let rest = (!label.rest.is_empty()).then(|| attributed(&label.rest, &rest_font, &rest_color));
         let rest_w = rest.as_ref().map_or(0.0, |r| r.size().width);
-        let (w, h) = (first_size.width + rest_w + pad * 2.0, first_size.height + pad * 2.0);
+        // 大きい文字と小さい文字のベースラインをそろえる（ascender の差だけ rest を下げる）
+        let rest_dy = first_font.ascender() - rest_font.ascender();
+        let rest_h = rest.as_ref().map_or(0.0, |r| r.size().height);
+        let body_h = first_size.height.max(rest_h);
+        let (w, h) = (first_size.width + rest_w + pad * 2.0, body_h + pad * 2.0);
         let (x, y) = match label.anchor {
             Anchor::TopLeft => (label.origin.x, label.origin.y),
             Anchor::TopRight => (label.origin.x - w, label.origin.y),
@@ -279,18 +285,20 @@ fn draw(scene: &Scene, config: &Config) {
         NSBezierPath::fillRect(NSRect::new(NSPoint::new(x, y), NSSize::new(w, h)));
         first.drawAtPoint(NSPoint::new(x + pad, y + pad));
         if let Some(rest) = rest {
-            rest.drawAtPoint(NSPoint::new(x + pad + first_size.width, y + pad));
+            rest.drawAtPoint(NSPoint::new(x + pad + first_size.width, y + pad + rest_dy));
         }
     }
 
     let edge_strong = font(&style.font, style.edge_key_size, true);
+    let edge_next = font(&style.font, style.edge_key_size * style.next_scale, true);
     for key in &scene.edge_keys {
         let color = if key.next {
             key_color(config, key.key).unwrap_or_else(|| rgba(ar * 0.6, ag * 0.6, ab * 0.9, 1.0))
         } else {
             rgba(ar * 0.6, ag * 0.6, ab * 0.9, 0.42)
         };
-        let text = attributed(&key.key.to_string(), &edge_strong, &color);
+        let key_font = if key.next { &edge_next } else { &edge_strong };
+        let text = attributed(&key.key.to_string(), key_font, &color);
         let size = text.size();
         text.drawAtPoint(NSPoint::new(
             key.center.x - size.width / 2.0,
