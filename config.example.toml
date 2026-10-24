@@ -29,5 +29,6 @@ min_label_size = 8.0     # セルに収まらないとき、ここまで縮め�
 edge_key_size = 10.0     # 細分のキーの文字サイズ（refine = true のとき）
 label_layout = "center"  # "inline" でセルの左上、"corners" で4隅に1文字ずつ（4文字のときだけ）
 label_bg_opacity = 0.72
+label_bg_end_opacity = 0.25  # 背景の右端の不透明度。先頭の文字までは label_bg_opacity のまま右へ薄くなる（同じ値なら一様）
 rest_opacity = 0.42
 uppercase = false
