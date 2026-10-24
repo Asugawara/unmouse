@@ -602,7 +602,7 @@ mod tests {
         // 収まるなら設定のまま
         let config = Config::default();
         let nav = nav_of(&[MB, EXT_R]).with_subdivide(Subdivide::Half);
-        assert_eq!(scenes(&nav, &config)[0].label_size, 11.0);
+        assert_eq!(scenes(&nav, &config)[0].label_size, 10.0);
         // 6 文字 × 0.6 × 大きさ + 4 <= セル幅 - 4 の境目: 大きさ (63.625-8)/3.6
         let mut edge = Config::default();
         edge.style.next_scale = 1.0;
@@ -767,13 +767,13 @@ mod tests {
         let all = scenes(&nav, &config);
         assert!(all[0].edge_keys.is_empty());
         assert_eq!(all[1].edge_keys.len(), 8);
-        // 座標はモニターの左上が原点。セルの 7.5pt 外側（キーの大きさ 11 の半分 + 2）に出る
+        // 座標はモニターの左上が原点。セルの 7pt 外側（キーの大きさ 10 の半分 + 2）に出る
         let region = nav.region().unwrap();
         let next: Vec<&EdgeKey> = all[1].edge_keys.iter().filter(|k| k.next).collect();
         assert_eq!(next.iter().map(|k| k.key).collect::<String>(), "jkl;");
         // 葉は縦長 (63.625 x 90) なので、次に打つ 4 つは行 = セルの左に縦に並ぶ
         for k in &next {
-            assert!(approx(k.center.x, region.x - 7.5 - EXT_R.x), "{k:?}");
+            assert!(approx(k.center.x, region.x - 7.0 - EXT_R.x), "{k:?}");
         }
         for (i, k) in next.iter().enumerate() {
             let want = region.y + region.h / 4.0 * (i as f64 + 0.5) - EXT_R.y;
@@ -781,7 +781,7 @@ mod tests {
         }
         let after: Vec<&EdgeKey> = all[1].edge_keys.iter().filter(|k| !k.next).collect();
         for k in &after {
-            assert!(approx(k.center.y, region.y - 7.5 - EXT_R.y), "{k:?}");
+            assert!(approx(k.center.y, region.y - 7.0 - EXT_R.y), "{k:?}");
         }
     }
 

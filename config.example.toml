@@ -24,9 +24,9 @@ key_colors = ["#0050ff", "#009900", "#ff0000", "#cc00cc"]  # 次に打つ文字�
 next_scale = 1.5        # 次に打つ文字（色が付いている文字）の大きさの倍率（1.0〜3.0）
 dim_opacity = 0.30
 font = ""                # 空ならシステムの等幅（monospacedSystemFont）
-label_size = 11.0        # pt。6〜48
+label_size = 10.0        # pt。6〜48
 min_label_size = 8.0     # セルに収まらないとき、ここまで縮める
-edge_key_size = 11.0     # 細分のキーの文字サイズ（refine = true のとき）
+edge_key_size = 10.0     # 細分のキーの文字サイズ（refine = true のとき）
 label_layout = "center"  # "inline" でセルの左上、"corners" で4隅に1文字ずつ（4文字のときだけ）
 label_bg_opacity = 0.72
 rest_opacity = 0.42
