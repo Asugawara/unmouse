@@ -9,16 +9,17 @@ use objc2::runtime::AnyObject;
 use objc2::{AllocAnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
     NSAttributedStringNSExtendedStringDrawing, NSAttributedStringNSStringDrawing,
-    NSBackingStoreType, NSBezierPath, NSColor, NSFont, NSFontAttributeName, NSFontWeightBold,
-    NSFontWeightRegular, NSForegroundColorAttributeName, NSGradient, NSGradientDrawingOptions,
-    NSGraphicsContext, NSPanel, NSScreenSaverWindowLevel, NSStringDrawingOptions, NSView,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSBackingStoreType, NSBezierPath, NSColor, NSFont, NSFontAttributeName, NSFontWeightBlack,
+    NSFontWeightBold, NSFontWeightHeavy, NSFontWeightRegular, NSFontWeightSemibold,
+    NSForegroundColorAttributeName, NSGradient, NSGradientDrawingOptions, NSGraphicsContext,
+    NSPanel, NSScreenSaverWindowLevel, NSStringDrawingOptions, NSView, NSWindowCollectionBehavior,
+    NSWindowStyleMask,
 };
 use objc2_foundation::{
     NSAttributedString, NSDictionary, NSMutableDictionary, NSPoint, NSRect, NSSize, NSString,
 };
 
-use crate::config::Config;
+use crate::config::{Config, LabelWeight};
 use crate::geometry::{Rect, cg_to_ns};
 use crate::monitors::Monitor;
 use crate::scene::{Anchor, Scene};
@@ -196,13 +197,21 @@ fn nsrect(r: Rect) -> NSRect {
     NSRect::new(NSPoint::new(r.x, r.y), NSSize::new(r.w, r.h))
 }
 
-fn font(name: &str, size: f64, bold: bool) -> Retained<NSFont> {
+fn font(name: &str, size: f64, weight: LabelWeight) -> Retained<NSFont> {
     if !name.is_empty()
         && let Some(f) = NSFont::fontWithName_size(&NSString::from_str(name), size)
     {
         return f;
     }
-    let weight = unsafe { if bold { NSFontWeightBold } else { NSFontWeightRegular } };
+    let weight = unsafe {
+        match weight {
+            LabelWeight::Regular => NSFontWeightRegular,
+            LabelWeight::Semibold => NSFontWeightSemibold,
+            LabelWeight::Bold => NSFontWeightBold,
+            LabelWeight::Heavy => NSFontWeightHeavy,
+            LabelWeight::Black => NSFontWeightBlack,
+        }
+    };
     NSFont::monospacedSystemFontOfSize_weight(size, weight)
 }
 
@@ -274,9 +283,9 @@ fn draw(scene: &Scene, config: &Config) {
         );
     }
 
-    let strong_font = font(&style.font, scene.label_size, true);
-    let rest_font = font(&style.font, scene.label_size, false);
-    let next_font = font(&style.font, scene.label_size * style.next_scale, true);
+    let strong_font = font(&style.font, scene.label_size, LabelWeight::Bold);
+    let rest_font = font(&style.font, scene.label_size, LabelWeight::Regular);
+    let next_font = font(&style.font, scene.label_size * style.next_scale, style.next_weight);
     let strong_color = rgba(ar * 0.6, ag * 0.6, ab * 0.9, 1.0);
     let ink = rgba(0.0, 0.0, 0.0, 1.0);
     let rest_color = rgba(0.0, 0.0, 0.0, style.rest_opacity);
@@ -344,8 +353,8 @@ fn draw(scene: &Scene, config: &Config) {
         }
     }
 
-    let edge_strong = font(&style.font, style.edge_key_size, true);
-    let edge_next = font(&style.font, style.edge_key_size * style.next_scale, true);
+    let edge_strong = font(&style.font, style.edge_key_size, LabelWeight::Bold);
+    let edge_next = font(&style.font, style.edge_key_size * style.next_scale, style.next_weight);
     for key in &scene.edge_keys {
         let color = if key.next {
             key_color(config, key.key).unwrap_or_else(|| rgba(ar * 0.6, ag * 0.6, ab * 0.9, 1.0))
