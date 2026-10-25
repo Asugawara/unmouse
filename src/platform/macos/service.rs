@@ -260,7 +260,7 @@ pub fn install() -> Result<()> {
     execute(&plan_install(is_loaded()), &paths)?;
     println!("インストールしました: {}", paths.exe.display());
     println!("plist: {}", paths.plist.display());
-    println!("Accessibility の許可が必要です。初回は許可ダイアログが出ます（許可すると自動で動き出します）");
+    println!("Accessibility の許可が必要です。初回は許可ダイアログが出ます（許可したあとに動き出さなければ unmouse restart）");
     Ok(())
 }
 

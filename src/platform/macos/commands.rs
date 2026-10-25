@@ -51,7 +51,7 @@ pub fn run(verbose: bool, wait_for_permission: bool) -> Result<()> {
     let config = Config::load()?;
     let mut trusted = permissions::accessibility_trusted(true);
     if !trusted && wait_for_permission {
-        eprintln!("許可待ち");
+        eprintln!("許可待ち（許可したあとに動き出さなければ unmouse restart）");
         while !permissions::accessibility_trusted(false) {
             sleep(Duration::from_secs(2));
         }
