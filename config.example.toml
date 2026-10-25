@@ -22,6 +22,7 @@ cancel = "escape"
 accent = "#1d4ed8"
 key_colors = ["#0050ff", "#009900", "#ff0000", "#cc00cc"]  # 次に打つ文字の色（keys と同じ順）
 next_scale = 1.5        # 次に打つ文字（色が付いている文字）の大きさの倍率（1.0〜3.0）
+next_weight = "bold"     # 次に打つ文字の太さ。regular / semibold / bold / heavy / black。font を指定すると無視される
 dim_opacity = 0.30
 font = ""                # 空ならシステムの等幅（monospacedSystemFont）
 label_size = 10.0        # pt。6〜48

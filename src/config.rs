@@ -65,6 +65,17 @@ pub enum LabelLayout {
     Corners,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LabelWeight {
+    Regular,
+    Semibold,
+    #[default]
+    Bold,
+    Heavy,
+    Black,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Style {
@@ -76,6 +87,8 @@ pub struct Style {
     pub label_size: f64,
     /// 次に打つ文字（`label.next`）の大きさの倍率。1.0〜3.0。
     pub next_scale: f64,
+    /// 次に打つ文字の太さ。
+    pub next_weight: LabelWeight,
     pub min_label_size: f64,
     pub edge_key_size: f64,
     pub label_layout: LabelLayout,
@@ -134,6 +147,7 @@ impl Default for Style {
             font: String::new(),
             label_size: 10.0,
             next_scale: 1.5,
+            next_weight: LabelWeight::Bold,
             min_label_size: 8.0,
             edge_key_size: 10.0,
             label_layout: LabelLayout::Center,
@@ -430,6 +444,28 @@ mod tests {
     #[test]
     fn label_layout_unknown_value_is_error() {
         assert!(Config::from_toml("[style]\nlabel_layout = \"foo\"").is_err());
+    }
+
+    #[test]
+    fn next_weight_parses() {
+        let parse = |text: &str| Config::from_toml(text).unwrap().style.next_weight;
+        assert_eq!(parse("[style]\nnext_weight = \"regular\""), LabelWeight::Regular);
+        assert_eq!(parse("[style]\nnext_weight = \"semibold\""), LabelWeight::Semibold);
+        assert_eq!(parse("[style]\nnext_weight = \"bold\""), LabelWeight::Bold);
+        assert_eq!(parse("[style]\nnext_weight = \"heavy\""), LabelWeight::Heavy);
+        assert_eq!(parse("[style]\nnext_weight = \"black\""), LabelWeight::Black);
+    }
+
+    #[test]
+    fn next_weight_unknown_value_is_error() {
+        assert!(Config::from_toml("[style]\nnext_weight = \"thin\"").is_err());
+        assert!(Config::from_toml("[style]\nnext_weight = 700").is_err());
+    }
+
+    #[test]
+    fn next_weight_defaults_to_bold() {
+        assert_eq!(Config::default().style.next_weight, LabelWeight::Bold);
+        assert_eq!(Config::from_toml("").unwrap().style.next_weight, LabelWeight::Bold);
     }
 
     #[test]
