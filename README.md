@@ -85,8 +85,8 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 - 止めてしまったら `unmouse restart`、やめるなら `unmouse uninstall` です。
 - ビルドし直したときは `install` をもう一度打ちます。`restart` では新しいビルドに替わりません。
 - `install` は実行ファイルを `~/Library/Application Support/unmouse/unmouse` にコピーして署名します。ログイン項目に追加されます。
-- 権限の許可の対象は、ターミナルではなく、コピーされたバイナリ自身です。初回は許可ダイアログが出て、許可すると自動で動き出します。
-- `UNMOUSE_SIGN_IDENTITY` を指定しないと ad-hoc 署名になり、`install` のたびにバイナリの中身が変わって許可が外れます。外れたら、システム設定の許可リストから古い `unmouse` を消して追加し直してください。自己署名証明書を作って `UNMOUSE_SIGN_IDENTITY` に指定すると、再許可が要らなくなります。
+- 権限の許可の対象は、ターミナルではなく、コピーされたバイナリ自身です。初回は許可ダイアログが出ます。許可したあとに動き出さなければ、`unmouse restart` を打ってください（許可待ちのプロセスは、許可に気づかないことがあります）。
+- `UNMOUSE_SIGN_IDENTITY` を指定しないと ad-hoc 署名になり、`cargo build` でバイナリの中身が変わると、`install` し直したときに許可が外れます（中身が同じなら外れません）。外れたら、システム設定の許可リストから古い `unmouse` を消して追加し直してください。自己署名証明書を作って `UNMOUSE_SIGN_IDENTITY` に指定すると、再許可が要らなくなります。
 - ログは `~/Library/Logs/unmouse.log` に出ます。launchd 起動ではシェルの環境変数（`XDG_CONFIG_HOME` など）が引き継がれません。
 - `kill` で止めた場合は自動では戻りません。クラッシュしたときだけ自動で再起動します。
 
