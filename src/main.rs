@@ -15,7 +15,16 @@ enum Command {
         /// 受けたキーイベントを標準エラーに1行ずつ出す
         #[arg(long)]
         verbose: bool,
+        /// Accessibility の許可が出るまで待つ
+        #[arg(long)]
+        wait_for_permission: bool,
     },
+    /// 実行ファイルをコピーして署名し、ログイン時に自動で起動するよう登録する
+    Install,
+    /// 自動起動の登録を外し、コピーした実行ファイルを消す
+    Uninstall,
+    /// 登録済みの常駐を起動し直す
+    Restart,
     /// 権限・tap・Secure Input・設定・モニターを確かめる
     Doctor,
     /// モニター、文字数、各モニターのセルの大きさを表示する
@@ -39,10 +48,19 @@ enum Command {
 
 #[cfg(target_os = "macos")]
 fn main() -> Result<()> {
-    use unmouse::platform::macos::commands;
+    use unmouse::platform::macos::{commands, service};
     let cli = Cli::parse();
-    match cli.command.unwrap_or(Command::Run { verbose: false }) {
-        Command::Run { verbose } => commands::run(verbose),
+    match cli.command.unwrap_or(Command::Run {
+        verbose: false,
+        wait_for_permission: false,
+    }) {
+        Command::Run {
+            verbose,
+            wait_for_permission,
+        } => commands::run(verbose, wait_for_permission),
+        Command::Install => service::install(),
+        Command::Uninstall => service::uninstall(),
+        Command::Restart => service::restart(),
         Command::Doctor => commands::doctor(),
         Command::Layout => commands::layout(),
         Command::Cursor => commands::cursor(),

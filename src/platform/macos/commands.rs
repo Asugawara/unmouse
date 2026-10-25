@@ -1,12 +1,15 @@
 //! CLI のサブコマンド。
 
+use std::fs::{self, File, OpenOptions, TryLockError};
+use std::path::Path;
+use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use objc2::MainThreadMarker;
 
 use super::app::{self, Runtime};
-use super::{overlay, permissions, screens, tap};
+use super::{overlay, permissions, screens, service, tap};
 use crate::config::Config;
 use crate::controller::Controller;
 use crate::geometry::Point;
@@ -24,10 +27,36 @@ fn nav_for(config: &Config, monitors: &[Monitor], cursor: Point) -> Result<Nav> 
         .with_subdivide(config.grid.subdivide))
 }
 
-pub fn run(verbose: bool) -> Result<()> {
+/// 二重起動を防ぐ排他ロック。返した `File` を持っている間だけ有効。
+fn acquire_lock(path: &Path) -> Result<File> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("{} を作れません", parent.display()))?;
+    }
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)
+        .with_context(|| format!("{} を開けません", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(TryLockError::WouldBlock) => bail!("既に起動しています（launchd 管理なら unmouse restart）"),
+        Err(TryLockError::Error(e)) => Err(e).with_context(|| format!("{} をロックできません", path.display())),
+    }
+}
+
+pub fn run(verbose: bool, wait_for_permission: bool) -> Result<()> {
+    let _lock = acquire_lock(&service::home()?.join("Library/Caches/unmouse.lock"))?;
     let mtm = main_thread()?;
     let config = Config::load()?;
-    let trusted = permissions::accessibility_trusted(true);
+    let mut trusted = permissions::accessibility_trusted(true);
+    if !trusted && wait_for_permission {
+        eprintln!("許可待ち");
+        while !permissions::accessibility_trusted(false) {
+            sleep(Duration::from_secs(2));
+        }
+        trusted = true;
+    }
     eprintln!("accessibility: {}", if trusted { "ok" } else { "missing" });
     // 許可がなければ tap も作れず、app::run が理由を付けてエラーにする。
     app::run(mtm, config, verbose)
@@ -158,4 +187,22 @@ pub fn demo(keys: &str, delay_ms: u64, allow_click: bool) -> Result<()> {
 
 fn ms(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lock_is_exclusive_until_dropped() {
+        let dir = std::env::temp_dir().join(format!("unmouse-lock-test-{}", std::process::id()));
+        let path = dir.join("unmouse.lock");
+        let first = acquire_lock(&path).unwrap();
+        assert!(acquire_lock(&path).is_err());
+        drop(first);
+        let again = acquire_lock(&path);
+        assert!(again.is_ok());
+        drop(again);
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

@@ -78,6 +78,18 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 
 全モニターを1枚の画面とみなします。モニターを選ぶ段はありません。モニターの境目をまたぐセルは、面積の大きい側のモニターにラベルを出します。
 
+## 自動起動（常駐）
+
+`cargo build --release` のあと、`target/release/unmouse install` を実行します。以後はログインのたびに自動で起動します。`install` の前に、手動で動かしている `unmouse run` を止めてください。古いビルドはロックを持たず、二重になります。
+
+- 止めてしまったら `unmouse restart`、やめるなら `unmouse uninstall` です。
+- ビルドし直したときは `install` をもう一度打ちます。`restart` では新しいビルドに替わりません。
+- `install` は実行ファイルを `~/Library/Application Support/unmouse/unmouse` にコピーして署名します。ログイン項目に追加されます。
+- 権限の許可の対象は、ターミナルではなく、コピーされたバイナリ自身です。初回は許可ダイアログが出て、許可すると自動で動き出します。
+- `UNMOUSE_SIGN_IDENTITY` を指定しないと ad-hoc 署名になり、`install` のたびにバイナリの中身が変わって許可が外れます。外れたら、システム設定の許可リストから古い `unmouse` を消して追加し直してください。自己署名証明書を作って `UNMOUSE_SIGN_IDENTITY` に指定すると、再許可が要らなくなります。
+- ログは `~/Library/Logs/unmouse.log` に出ます。launchd 起動ではシェルの環境変数（`XDG_CONFIG_HOME` など）が引き継がれません。
+- `kill` で止めた場合は自動では戻りません。クラッシュしたときだけ自動で再起動します。
+
 ## サブコマンド
 
 引数なしで起動すると `run`（常駐）になります。
@@ -85,6 +97,10 @@ UNMOUSE_SIGN_IDENTITY="自己署名証明書の名前" scripts/bundle.sh
 | コマンド | 内容 |
 |---|---|
 | `unmouse run [--verbose]` | 常駐して、起動の操作で起動する（既定）。起動時に権限・tap・起動の操作を標準エラーに出します。`--verbose` で受けたキーイベントを1行ずつ出します |
+| `unmouse run --wait-for-permission` | 許可が出るまで待ってから常駐する。自動起動はこの形で動きます |
+| `unmouse install` | 実行ファイルをコピーして署名し、ログイン時に自動で起動するよう登録する |
+| `unmouse uninstall` | 自動起動の登録を外し、コピーした実行ファイルを消す（ログは残す） |
+| `unmouse restart` | 登録済みの常駐を起動し直す |
 | `unmouse doctor` | 権限・イベントタップ・Secure Input・設定・モニターを確かめる |
 | `unmouse layout` | モニター、文字数、各モニターのセルの大きさを表示する |
 | `unmouse cursor` | 今のカーソル位置を表示する |
