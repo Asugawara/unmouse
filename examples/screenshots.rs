@@ -767,7 +767,7 @@ mod mac {
 
     /// 不透明な画像なので、アルファは書かない（RGB）。
     fn rgb_bytes(canvas: &Canvas) -> Vec<u8> {
-        canvas.rgba().chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect()
+        canvas.rgba().as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect()
     }
 
     fn encoder(path: &Path, canvas: &Canvas) -> Result<png::Encoder<'static, BufWriter<File>>> {
