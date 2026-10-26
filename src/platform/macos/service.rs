@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 
-const LABEL: &str = "dev.unmouse.daemon";
+const LABEL: &str = "io.github.asugawara.unmouse.daemon";
+/// 識別子を変える前の版が登録していたラベル。install / uninstall で片付ける。
+const LEGACY_LABEL: &str = "dev.unmouse.daemon";
 const LAUNCHCTL: &str = "/bin/launchctl";
 const CODESIGN: &str = "/usr/bin/codesign";
 
@@ -96,6 +98,11 @@ fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
+/// 旧ラベルの plist の場所。
+fn legacy_plist_path(home: &Path) -> PathBuf {
+    home.join(format!("Library/LaunchAgents/{LEGACY_LABEL}.plist"))
+}
+
 pub fn home() -> Result<PathBuf> {
     std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -105,6 +112,7 @@ pub fn home() -> Result<PathBuf> {
 struct Paths {
     exe: PathBuf,
     plist: PathBuf,
+    legacy_plist: PathBuf,
     log: PathBuf,
 }
 
@@ -114,6 +122,7 @@ impl Paths {
         Ok(Self {
             exe: home.join("Library/Application Support/unmouse/unmouse"),
             plist: home.join(format!("Library/LaunchAgents/{LABEL}.plist")),
+            legacy_plist: legacy_plist_path(&home),
             log: home.join("Library/Logs/unmouse.log"),
         })
     }
@@ -123,8 +132,12 @@ fn domain() -> String {
     format!("gui/{}", unsafe { getuid() })
 }
 
+fn target_of(label: &str) -> String {
+    format!("{}/{label}", domain())
+}
+
 fn target() -> String {
-    format!("{}/{LABEL}", domain())
+    target_of(LABEL)
 }
 
 fn launchctl(args: &[&str]) -> Result<Output> {
@@ -136,7 +149,11 @@ fn launchctl(args: &[&str]) -> Result<Output> {
 
 /// 読み込み済みか。終了コードだけで判定する。
 fn is_loaded() -> bool {
-    launchctl(&["print", &target()]).is_ok_and(|o| o.status.success())
+    is_label_loaded(LABEL)
+}
+
+fn is_label_loaded(label: &str) -> bool {
+    launchctl(&["print", &target_of(label)]).is_ok_and(|o| o.status.success())
 }
 
 fn launchctl_checked(args: &[&str]) -> Result<()> {
@@ -152,14 +169,14 @@ fn launchctl_checked(args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn wait_unloaded() -> Result<()> {
+fn wait_unloaded(label: &str) -> Result<()> {
     for _ in 0..50 {
-        if !is_loaded() {
+        if !is_label_loaded(label) {
             return Ok(());
         }
         sleep(Duration::from_millis(200));
     }
-    bail!("10 秒待っても {LABEL} が終了しません")
+    bail!("10 秒待っても {label} が終了しません")
 }
 
 fn bootstrap(plist: &Path) -> Result<()> {
@@ -235,6 +252,20 @@ fn remove_files(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
+/// 旧ラベルの登録を外し、plist を消す。登録されていなければ何もしない。
+fn remove_legacy(paths: &Paths) -> Result<()> {
+    if is_label_loaded(LEGACY_LABEL) {
+        // 「見つからない」などの失敗は無視する。外れたかどうかは wait_unloaded が確かめる。
+        let _ = launchctl(&["bootout", &target_of(LEGACY_LABEL)]);
+        wait_unloaded(LEGACY_LABEL)?;
+    }
+    match fs::remove_file(&paths.legacy_plist) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e).with_context(|| format!("{} を削除できません", paths.legacy_plist.display())),
+    }
+}
+
 fn execute(steps: &[Step], paths: &Paths) -> Result<()> {
     for step in steps {
         match step {
@@ -244,7 +275,7 @@ fn execute(steps: &[Step], paths: &Paths) -> Result<()> {
                     eprintln!("警告: {e:#}");
                 }
             }
-            Step::WaitUnloaded => wait_unloaded()?,
+            Step::WaitUnloaded => wait_unloaded(LABEL)?,
             Step::InstallBinary => install_binary(paths)?,
             Step::WritePlist => write_plist(paths)?,
             Step::Bootstrap => bootstrap(&paths.plist)?,
@@ -257,6 +288,8 @@ fn execute(steps: &[Step], paths: &Paths) -> Result<()> {
 
 pub fn install() -> Result<()> {
     let paths = Paths::new()?;
+    // 旧ラベルの常駐も同じ実行ファイルを使うので、置き換える前に外す。
+    remove_legacy(&paths)?;
     execute(&plan_install(is_loaded()), &paths)?;
     println!("インストールしました: {}", paths.exe.display());
     println!("plist: {}", paths.plist.display());
@@ -266,6 +299,7 @@ pub fn install() -> Result<()> {
 
 pub fn uninstall() -> Result<()> {
     let paths = Paths::new()?;
+    remove_legacy(&paths)?;
     execute(&plan_uninstall(is_loaded()), &paths)?;
     println!("削除しました（ログは残しています: {}）", paths.log.display());
     Ok(())
@@ -320,6 +354,14 @@ mod tests {
         assert_eq!(extract(&plist, "StandardErrorPath"), "/tmp/x & y/unmouse.log");
         assert!(!plist.contains('~'));
         assert!(plutil(&["-lint", "-"], &plist).0);
+    }
+
+    #[test]
+    fn legacy_plist_lives_in_launch_agents() {
+        assert_eq!(
+            legacy_plist_path(Path::new("/Users/me")),
+            Path::new("/Users/me/Library/LaunchAgents/dev.unmouse.daemon.plist")
+        );
     }
 
     #[test]

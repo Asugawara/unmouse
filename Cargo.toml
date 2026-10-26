@@ -2,6 +2,14 @@
 name = "unmouse"
 version = "0.1.0"
 edition = "2024"
+description = "Control the mouse pointer from the keyboard on macOS"
+license = "MIT"
+repository = "https://github.com/Asugawara/unmouse"
+homepage = "https://github.com/Asugawara/unmouse"
+readme = "README.md"
+keywords = ["macos", "mouse", "keyboard", "accessibility", "productivity"]
+categories = ["command-line-utilities", "accessibility"]
+rust-version = "1.89"
 
 [dependencies]
 anyhow = "1.0.104"
