@@ -45,7 +45,7 @@ It is for people who want to keep their hands on the home row, and for anyone wh
 
 2. **Grant the permission.** The first start asks for Accessibility. Open System Settings > Privacy & Security > Accessibility and allow `unmouse`. If it does not start after you allow it, run `unmouse restart`.
 
-3. **Try it.** Double tap the right Command key, then type the label of a place on the screen.
+3. **Try it.** Double tap the right Command key, then type the label of a place on the screen. To start it another way, such as a double tap of the left Command key, set `hotkey` in the [config](#configuration).
 
 4. **Check the setup.** `unmouse doctor` shows the permission, the event tap, Secure Input, your config and the monitors.
 
@@ -75,17 +75,17 @@ It is for people who want to keep their hands on the home row, and for anyone wh
 | `g` | Start and end a drag |
 | `h` or `Backspace` | Go back one letter |
 | `Esc` | Cancel |
-| The trigger again (double tap right Command) | Close (while typing, move to the center of that range; while dragging, cancel) |
+| The trigger again (double tap right Command by default) | Close (while typing, move to the center of that range; while dragging, cancel) |
 
 You can change the action keys in `[actions]`. While the overlay is open, a key that is not in the table does nothing and does not reach other apps. The screen does not show a key guide, so use this table.
 
 ## Configuration
 
-The config file is `~/.config/unmouse/config.toml`. If `$XDG_CONFIG_HOME` is set, unmouse reads `unmouse/config.toml` under it instead. Without a file, the defaults are used.
+The config file is `~/.config/unmouse/config.toml`. If `$XDG_CONFIG_HOME` is set, unmouse reads `unmouse/config.toml` under it instead. Without a file, the defaults are used. unmouse reads the config when it starts, so run `unmouse restart` after you change it.
 
 See `config.example.toml` for every option. These are the ones people change most:
 
-- `hotkey`: the trigger (default `"double:right_cmd"`). Top level. A double tap of a modifier is `"double:right_cmd"` (also `left_cmd`, `right_option`, `left_option`, `right_shift`, `left_shift`, `right_ctrl`, `left_ctrl`). A key combination is written like `"ctrl+alt+j"`.
+- `hotkey`: the trigger (default `"double:right_cmd"`). Top level. A double tap of a modifier is `"double:right_cmd"` (also `left_cmd`, `right_option`, `left_option`, `right_shift`, `left_shift`, `right_ctrl`, `left_ctrl`). A key combination is written like `"ctrl+alt+j"`. For a double tap of the left Command key, write `hotkey = "double:left_cmd"`.
 - `double_tap_ms`: the longest gap between the two taps, and the longest time for one press (ms, 100 to 1000, default 300). Top level. A key press, a mouse move, a click or a scroll between the two taps starts the count again (so holding right Command with Karabiner and using the mouse does not trigger it).
 - `label_size`: the label font size (pt, 6 to 48). In `[style]`.
 - `label_layout`: `"center"` (default) puts the label as one group in the middle of the cell. `"inline"` puts it at the top left of the cell. `"corners"` puts one letter in each of the four corners (only for 4-letter labels; otherwise it is the same as `"center"`). In `[style]`.

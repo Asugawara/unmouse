@@ -45,7 +45,7 @@ unmouse は macOS 用の小さな常駐ツールです。右 Command を2回タ�
 
 2. **許可する。** 初回の起動で Accessibility の許可を求められます。システム設定 > プライバシーとセキュリティ > アクセシビリティ で `unmouse` を許可してください。許可したあとに動き出さなければ、`unmouse restart` を打ってください。
 
-3. **使ってみる。** 右 Command を2回タップして、画面上の場所のラベルを打ちます。
+3. **使ってみる。** 右 Command を2回タップして、画面上の場所のラベルを打ちます。左 Command など別の操作で起動したいときは、[設定](#設定)の `hotkey` で変えられます。
 
 4. **確かめる。** `unmouse doctor` で、権限・イベントタップ・Secure Input・設定・モニターを確かめられます。
 
@@ -75,17 +75,17 @@ unmouse は macOS 用の小さな常駐ツールです。右 Command を2回タ�
 | `g` | ドラッグの開始と終了 |
 | `h` か `Backspace` | 1文字戻る |
 | `Esc` | 取り消す |
-| 起動の操作をもう一度（右 Cmd の2回タップ） | 閉じる（打ちかけなら、その範囲の中心へ動かす。ドラッグ中は取り消す） |
+| 起動の操作をもう一度（既定は右 Cmd の2回タップ） | 閉じる（打ちかけなら、その範囲の中心へ動かす。ドラッグ中は取り消す） |
 
 操作キーは `[actions]` で変えられます。起動中は、表にないキーを押しても何も起きず、ほかのアプリにも届きません。画面にキーの案内は出ないので、この表で確かめてください。
 
 ## 設定
 
-設定ファイルは `~/.config/unmouse/config.toml` です。`$XDG_CONFIG_HOME` が設定されていれば、その下の `unmouse/config.toml` を読みます。ファイルがなければ既定値で動きます。
+設定ファイルは `~/.config/unmouse/config.toml` です。`$XDG_CONFIG_HOME` が設定されていれば、その下の `unmouse/config.toml` を読みます。ファイルがなければ既定値で動きます。設定は起動時に読むので、変えたら `unmouse restart` を打ってください。
 
 全項目は `config.example.toml` を参照してください。よく変える項目は次のとおりです。
 
-- `hotkey`: 起動の操作（既定 `"double:right_cmd"`）。トップレベルに書きます。修飾キーの2回タップは `"double:right_cmd"`（ほかに `left_cmd` `right_option` `left_option` `right_shift` `left_shift` `right_ctrl` `left_ctrl`）、キーの組み合わせは `"ctrl+alt+j"` の形で書きます。
+- `hotkey`: 起動の操作（既定 `"double:right_cmd"`）。トップレベルに書きます。修飾キーの2回タップは `"double:right_cmd"`（ほかに `left_cmd` `right_option` `left_option` `right_shift` `left_shift` `right_ctrl` `left_ctrl`）、キーの組み合わせは `"ctrl+alt+j"` の形で書きます。左 Command の2回タップにするなら `hotkey = "double:left_cmd"` です。
 - `double_tap_ms`: 2回タップの間隔と、1回の押下の上限（ms、100〜1000、既定 300）。トップレベルに書きます。2回のタップの間にキーを押すか、マウスを動かす・クリックする・スクロールすると、数え直します（Karabiner などで右 Cmd を押したままマウスを操作しても起動しません）。
 - `label_size`: ラベルの文字サイズ（pt、6〜48）。`[style]` に書きます。
 - `label_layout`: `"center"`（既定）はセルの真ん中に1まとまりで出します。`"inline"` はセルの左上に出します。`"corners"` は4隅に1文字ずつ出します（4文字のときだけ。それ以外は `"center"` と同じ）。`[style]` に書きます。
