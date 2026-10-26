@@ -54,7 +54,7 @@ define_class!(
             let ivars = self.ivars();
             if let Some(scene) = ivars.scene.borrow().as_ref() {
                 let start = Instant::now();
-                draw(scene, &ivars.config);
+                draw_scene(scene, &ivars.config);
                 LAST_DRAW_NANOS.store(start.elapsed().as_nanos() as u64, Ordering::Relaxed);
             }
         }
@@ -258,7 +258,7 @@ fn draw_on_baseline(text: &NSAttributedString, x: f64, baseline: f64, width: f64
     );
 }
 
-fn draw(scene: &Scene, config: &Config) {
+pub fn draw_scene(scene: &Scene, config: &Config) {
     let style = &config.style;
     let (ar, ag, ab) = config.accent_rgb().unwrap_or((0x1d, 0x4e, 0xd8));
     let (ar, ag, ab) = (ar as f64 / 255.0, ag as f64 / 255.0, ab as f64 / 255.0);
