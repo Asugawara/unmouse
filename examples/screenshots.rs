@@ -455,7 +455,7 @@ mod mac {
             gradient(full, rgb(0.20, 0.45, 0.55), rgb(0.78, 0.86, 0.70), 90.0);
             radial(w * 0.2, h * 0.8, 520.0, rgba(0.95, 0.85, 0.55, 0.5), rgba(0.95, 0.85, 0.55, 0.0));
         }
-        menu_bar(w, screen);
+        menu_bar(w);
         if screen == 0 {
             notes_window(Rect::new(90.0, 80.0, 640.0, 470.0));
             code_window(Rect::new(560.0, 150.0, 780.0, 520.0));
@@ -466,14 +466,14 @@ mod mac {
         }
     }
 
-    fn menu_bar(w: f64, screen: usize) {
+    fn menu_bar(w: f64) {
         fill_rect(Rect::new(0.0, 0.0, w, 28.0), rgba(1.0, 1.0, 1.0, 0.55));
         let ink = rgba(0.1, 0.1, 0.14, 0.9);
         let mut x = 18.0;
         for (i, item) in ["Editor", "File", "Edit", "View", "Window", "Help"].iter().enumerate() {
             x += text(item, x, 6.0, Face::Ui(13.0), i == 0, ink.clone()) + 20.0;
         }
-        let clock = if screen == 0 { "Mon 9:41" } else { "Mon 9:41" };
+        let clock = "Mon 9:41";
         let cw = text_width(clock, Face::Ui(13.0), false);
         text(clock, w - cw - 18.0, 6.0, Face::Ui(13.0), false, ink.clone());
         fill_circle(w - cw - 44.0, 14.0, 5.0, rgba(0.1, 0.1, 0.14, 0.55));

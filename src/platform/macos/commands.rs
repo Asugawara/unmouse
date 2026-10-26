@@ -200,7 +200,15 @@ mod tests {
         let first = acquire_lock(&path).unwrap();
         assert!(acquire_lock(&path).is_err());
         drop(first);
-        let again = acquire_lock(&path);
+        // 並列実行中の別テストが起動した子プロセスが一瞬 fd を握ることがあるので、解放を少し待つ
+        let started = std::time::Instant::now();
+        let again = loop {
+            match acquire_lock(&path) {
+                Ok(file) => break Ok(file),
+                Err(e) if started.elapsed() >= Duration::from_secs(2) => break Err(e),
+                Err(_) => sleep(Duration::from_millis(10)),
+            }
+        };
         assert!(again.is_ok());
         drop(again);
         let _ = fs::remove_dir_all(&dir);
