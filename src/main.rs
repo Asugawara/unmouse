@@ -1,8 +1,14 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+/// リリース用のビルドは `UNMOUSE_BUILD_VERSION` で版を差し替える（CI のビルドは 0.0.0-ci など）。
+const VERSION: &str = match option_env!("UNMOUSE_BUILD_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 #[derive(Parser)]
-#[command(name = "unmouse", about = "キーボードだけでマウスを操作する")]
+#[command(name = "unmouse", version = VERSION, about = "キーボードだけでマウスを操作する")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
