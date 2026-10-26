@@ -6,5 +6,6 @@ pub mod mouse;
 pub mod overlay;
 pub mod permissions;
 pub mod screens;
+pub mod snapshot;
 pub mod service;
 pub mod tap;
