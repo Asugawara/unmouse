@@ -41,6 +41,15 @@ pub struct Tap {
     _state: Box<State>,
 }
 
+/// `--verbose` の keyDown の 1 行。通した keyDown はキーの内容を出さない（パスワードの入力がログに残るため）。
+fn key_down_line(t: u64, code: u16, flags: u64, consumed: bool) -> String {
+    if consumed {
+        format!("t={t} keyDown code=0x{code:02x} flags=0x{flags:x} fired=true")
+    } else {
+        format!("t={t} keyDown passthrough")
+    }
+}
+
 pub fn mods_from_flags(flags: CGEventFlags) -> Mods {
     let mut m = Mods::NONE;
     if flags.contains(CGEventFlags::MaskControl) {
@@ -146,11 +155,8 @@ unsafe extern "C-unwind" fn callback(
             dt.detector.on_other_key();
         }
         if state.verbose {
-            eprintln!(
-                "t={} keyDown code=0x{code:02x} flags=0x{:x} fired={consumed}",
-                now_ms(),
-                CGEvent::flags(Some(event_ref)).0
-            );
+            let flags = CGEvent::flags(Some(event_ref)).0;
+            eprintln!("{}", key_down_line(now_ms(), code, flags, consumed));
         }
         if consumed {
             state.swallowed.insert(code);
@@ -230,6 +236,22 @@ pub fn can_create() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn key_down_line_shows_the_key_only_when_consumed() {
+        assert_eq!(
+            key_down_line(12, 0x25, 0x100, true),
+            "t=12 keyDown code=0x25 flags=0x100 fired=true"
+        );
+    }
+
+    #[test]
+    fn key_down_line_hides_the_key_when_passed_through() {
+        let line = key_down_line(34, 0x25, 0x100, false);
+        assert_eq!(line, "t=34 keyDown passthrough");
+        assert!(!line.contains("code="));
+        assert!(!line.contains("flags="));
+    }
 
     #[test]
     fn mods_from_flags_maps_each_modifier() {
