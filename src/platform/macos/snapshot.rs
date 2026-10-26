@@ -76,7 +76,7 @@ impl Canvas {
         let data = CGBitmapContextGetData(Some(&self.cg)) as *const u8;
         assert!(!data.is_null());
         let mut out = unsafe { std::slice::from_raw_parts(data, len) }.to_vec();
-        for px in out.chunks_exact_mut(4) {
+        for px in out.as_chunks_mut::<4>().0 {
             let a = px[3] as u32;
             if a != 0 && a != 255 {
                 for c in &mut px[..3] {
